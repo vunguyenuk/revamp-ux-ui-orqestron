@@ -1,271 +1,30 @@
-const benefits = [
-  {
-    label: "save",
-    title: "Cut your electric bill by 20% or more",
-    detail:
-      "Solar and battery backup are bundled into one simple plan, with no upfront hardware cost.",
-    visual: "bill",
-  },
-  {
-    label: "protect",
-    title: "Keep the lights on when the grid goes dark",
-    detail:
-      "Stored energy automatically supports the essentials when outages hit your neighborhood.",
-    visual: "backup",
-  },
-  {
-    label: "earn",
-    title: "Get rewarded for helping the network",
-    detail:
-      "Your home can share extra capacity during peak demand and help stabilize local power.",
-    visual: "network",
-  },
-];
+"use client";
 
-const steps = [
-  {
-    count: "01",
-    title: "Check your home",
-    copy: "Enter your address and see whether your roof and utility profile are a fit.",
-  },
-  {
-    count: "02",
-    title: "Install solar + battery",
-    copy: "A Daylight-style plan packages the equipment, design and service into one monthly bill.",
-  },
-  {
-    count: "03",
-    title: "Power the grid back",
-    copy: "When energy is most valuable, your system can support the network and unlock rewards.",
-  },
-];
+import { useState } from "react";
 
-const riskStats = [
-  ["68F", "comfort target"],
-  ["9.5 kWh", "daily generation"],
-  ["72 hrs", "backup window"],
-];
+const Icon = ({ children }: { children: React.ReactNode }) => <span className="line-icon" aria-hidden="true">{children}</span>;
+const folders = [{ name: "Compliance", count: 6 },{ name: "Buyer Representation", count: 2 },{ name: "Purchase Agreement", count: 4 }];
+const assistantItems = [["BRBC", "Buyer Representation", "32/133 filled"],["AD", "Agency Disclosure", "7/15 filled"],["PRBS", "Possible Representation", "7/11 filled (currently open)"],["SBSA", "Statewide Advisory", "3/31 filled"],["RAD", "REALTOR® Acknowledgement", "8/51 filled"],["ABAD", "Affiliated Business Disclosure", "1/10 filled"],["FHDA", "Fair Housing Advisory", "1/19 filled"]];
 
-function BrandMark() {
-  return (
-    <a className="brand-mark" href="#top" aria-label="Daylight home">
-      <span className="brand-sun" aria-hidden="true" />
-      <span>daylight</span>
-    </a>
-  );
+function Rail() { return <aside className="rail"><button className="logo" aria-label="Orqestron home">O</button><nav><button aria-label="Projects"><Icon>▱</Icon></button><button aria-label="Forms"><Icon>▤</Icon></button><button aria-label="Contacts"><Icon>♧</Icon></button><button aria-label="Quick forms"><Icon>♧</Icon></button><span/><button aria-label="Theme"><Icon>☼</Icon></button><button aria-label="Library"><Icon>▥</Icon></button></nav><button className="rail-bell" aria-label="Notifications">♢</button></aside> }
+
+function DealHeader() {
+  const [phase, setPhase] = useState(0); const phases = ["Onboarding", "Touring", "Offer", "Escrow", "Closing"];
+  return <><header className="deal-head"><button className="sidebar-toggle" aria-label="Toggle sidebar">◧</button><div><div className="deal-title">Ariya Anna <button aria-label="Edit deal name">⌁</button></div><small>CA · New Leads</small></div><div className="crumbs">Pipeline <i>/</i> Projects <i>/</i> <b>Ariya Anna</b> <span>BUYER</span></div></header><div className="phase-row"><div className="phases" aria-label="Deal phase">{phases.map((name,index)=><button key={name} onClick={()=>setPhase(index)} className={phase===index?"active":phase>index?"done":""}>{name}</button>)}</div><button className="advance" onClick={()=>setPhase((phase+1)%phases.length)}>Advance phase</button><button className="more" aria-label="More options">•••</button></div><div className="tabs"><button className="active">Dashboard</button><button>Key Dates</button><button>Tasks</button><button className="send-sign">⌁&nbsp; Send for Signature</button></div></>;
 }
 
-function EnergyGlyph({ type }: { type: string }) {
-  return (
-    <div className={`energy-glyph ${type}`} aria-hidden="true">
-      <div className="glyph-grid">
-        <span />
-        <span />
-        <span />
-        <span />
-      </div>
-      <div className="glyph-line one" />
-      <div className="glyph-line two" />
-      <div className="glyph-dot one" />
-      <div className="glyph-dot two" />
-      <div className="glyph-dot three" />
-    </div>
-  );
+function FileTree() {
+  const [open,setOpen]=useState<Record<string,boolean>>({"Purchase Agreement":true});
+  return <aside className="file-panel"><section className="property-card"><label>PROPERTY</label><button>⌂ <b>CA</b><span>⌄</span></button></section><section className="files-card"><div className="section-label">FILES <button aria-label="Hide file tree">◫</button></div><label className="mini-label">PROFILES</label><button className="profile-row"><Icon>♙</Icon><b>Client Profile</b></button><button className="profile-row"><Icon>⌂</Icon><b>Property Profile</b></button><button className="profile-row"><Icon>♧</Icon><b>Buyer&apos;s Agents</b></button><div className="mini-label client-label">CLIENT DOCUMENTS <span>· all phases</span></div>{folders.map(folder=><div key={folder.name}><button className="folder-row" onClick={()=>setOpen(v=>({...v,[folder.name]:!v[folder.name]}))}><span>{open[folder.name]?"⌄":"›"}</span><Icon>□</Icon><b>{folder.name}</b><small><em>{folder.count} ITEMS</em> · {folder.count} forms</small></button>{open[folder.name]&&<div className="form-list"><div className="form-heading">CORE FORMS <span>4</span></div><button className="form-row active">AD — Disclosure Regarding Real Estate Agency Relationship.pdf</button><button className="form-row">RPA — California Residential Purchase Agreement.pdf</button></div>}</div>)}</section></aside>;
 }
 
-export default function Home() {
-  return (
-    <main id="top" className="site-shell">
-      <section className="hero-section" aria-labelledby="hero-title">
-        <img
-          className="hero-image"
-          src="/daylight-hero.png"
-          alt=""
-          width="1792"
-          height="1024"
-          fetchPriority="high"
-        />
-        <div className="hero-noise" aria-hidden="true" />
-        <header className="site-header">
-          <BrandMark />
-          <nav className="top-nav" aria-label="Primary navigation">
-            <a href="#how">How it works</a>
-            <a href="#network">Network</a>
-            <a href="#qualify">Qualify</a>
-          </nav>
-        </header>
+function Paper() { return <div className="paper-wrap"><div className="paper"><div className="paper-brand"><span className="car-mark">◢</span><small>CALIFORNIA<br/>ASSOCIATION<br/>OF REALTORS®</small><h2>DISCLOSURE REGARDING<br/>REAL ESTATE AGENCY RELATIONSHIP</h2></div><p className="paper-sub">(As required by the Civil Code)<br/>(C.A.R. Form AD, Revised 12/24)</p><p><i className="box"/> (If checked) This form is being provided in connection with a transaction for a leasehold interest exceeding one year per Civil Code §§ 2079.13(j), (k), and (l).</p><p>When you enter into a discussion with a real estate agent regarding a real estate transaction, you should from the outset understand what type of agency relationship or representation you wish to have with the agent in the transaction.</p><h3>SELLER&apos;S AGENT</h3><p>A Seller&apos;s agent under a listing agreement with the Seller acts as the agent for the Seller. A Seller&apos;s agent or a subagent of that agent has the following affirmative obligations:</p><ol><li>A fiduciary duty of utmost care, integrity, honesty and loyalty in dealings with the Seller.</li><li>A duty of honest and fair dealing and good faith.</li><li>A duty to disclose all facts known to the agent materially affecting the value or desirability of the property.</li></ol><h3>BUYER&apos;S AGENT</h3><p>A Buyer&apos;s agent can, with a Buyer&apos;s consent, agree to act as agent for the Buyer only. This includes a Buyer&apos;s agent under a buyer-broker representation agreement with the Buyer.</p><h3>AGENT REPRESENTING BOTH SELLER AND BUYER</h3>{Array.from({length:22}).map((_,i)=><div className="legal-line" key={i}>{i%4===0?"A real estate agent may represent both the Seller and the Buyer in a transaction with the knowledge and consent of both parties.":"The duties of a real estate agent in a transaction are governed by law and the terms of the agency relationship."}</div>)}</div></div> }
 
-        <div className="hero-frame" aria-hidden="true" />
+function Editor() { const [zoom,setZoom]=useState(100); return <main className="editor-panel"><div className="editor-top"><div className="mode"><button className="active">⌕ Edit</button><button>◉ Preview</button></div><div><button>⇩&nbsp; Export PDF⌄</button><button>◩&nbsp; Hide AI Chat</button></div></div><div className="editor-sub"><button>☷ Next field <span>(1/560)</span></button><div>Page <input value="1" readOnly/> / 25 <button>Go</button></div></div><Paper/><div className="zoom"><button onClick={()=>setZoom(Math.max(50,zoom-10))}>−</button><b>{zoom}%</b><button onClick={()=>setZoom(Math.min(150,zoom+10))}>＋</button><i/><button>↗</button></div></main> }
 
-        <div className="hero-content">
-          <p className="eyebrow">Power you control</p>
-          <h1 id="hero-title">Power your home for less</h1>
-          <p className="hero-copy">
-            Battery backup and solar, bundled into a lower monthly energy bill.
-          </p>
-          <form className="qualify-form" id="qualify">
-            <label className="sr-only" htmlFor="address">
-              Your address
-            </label>
-            <input
-              id="address"
-              name="address"
-              type="text"
-              autoComplete="street-address"
-              placeholder="Enter your address"
-            />
-            <button type="submit">See if you qualify</button>
-          </form>
-        </div>
-
-        <div className="hero-meter meter-top">
-          <span>kWh generated</span>
-          <strong>8.2 - 9.5 kWh</strong>
-        </div>
-        <div className="hero-meter meter-right">
-          <span>Backup stored</span>
-          <div className="storage-bar" aria-hidden="true">
-            <i />
-          </div>
-        </div>
-        <div className="hero-meter meter-bottom">
-          <span>Thermostat</span>
-          <strong>68F</strong>
-        </div>
-      </section>
-
-      <section className="benefits-section" aria-labelledby="benefits-title">
-        <div className="section-kicker">Built for home energy</div>
-        <h2 id="benefits-title" className="sr-only">
-          Home energy benefits
-        </h2>
-        <div className="benefit-list">
-          {benefits.map((benefit) => (
-            <article className="benefit-row" key={benefit.label}>
-              <div className="benefit-copy">
-                <p className="eyebrow dark">{benefit.label}</p>
-                <h3>{benefit.title}</h3>
-                <p>{benefit.detail}</p>
-              </div>
-              <div className="benefit-visual">
-                <EnergyGlyph type={benefit.visual} />
-              </div>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="how-section" id="how" aria-labelledby="how-title">
-        <div className="how-copy">
-          <p className="eyebrow dark">How daylight works</p>
-          <h2 id="how-title">One plan for solar, storage and savings.</h2>
-          <p>
-            Start with a quick home check, then pair rooftop solar with stored
-            energy so every bill, outage and peak demand moment is easier to
-            handle.
-          </p>
-        </div>
-
-        <div className="phone-panel" aria-label="Energy dashboard preview">
-          <div className="phone-top">
-            <span>Home status</span>
-            <strong>Live</strong>
-          </div>
-          <div className="sun-orbit" aria-hidden="true">
-            <i />
-          </div>
-          <div className="chart-lines" aria-hidden="true">
-            <span />
-            <span />
-            <span />
-          </div>
-          <div className="phone-stats">
-            <div>
-              <span>Bill trend</span>
-              <strong>-23%</strong>
-            </div>
-            <div>
-              <span>Stored</span>
-              <strong>81%</strong>
-            </div>
-          </div>
-        </div>
-
-        <div className="step-list">
-          {steps.map((step) => (
-            <article className="step-card" key={step.count}>
-              <span>{step.count}</span>
-              <h3>{step.title}</h3>
-              <p>{step.copy}</p>
-            </article>
-          ))}
-        </div>
-      </section>
-
-      <section className="grid-section" aria-labelledby="grid-title">
-        <div className="grid-copy">
-          <p className="eyebrow">Why now</p>
-          <h2 id="grid-title">
-            Today's grid was built for yesterday's demand.
-          </h2>
-          <p>
-            Hotter summers, more devices and aging infrastructure make home
-            backup more than a nice-to-have. A connected battery can protect
-            the house and lighten pressure on the grid.
-          </p>
-        </div>
-        <div className="risk-board" aria-label="Energy system readouts">
-          {riskStats.map(([value, label]) => (
-            <div className="risk-stat" key={label}>
-              <strong>{value}</strong>
-              <span>{label}</span>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section className="network-section" id="network" aria-labelledby="network-title">
-        <div className="network-map" aria-hidden="true">
-          <span className="node n1" />
-          <span className="node n2" />
-          <span className="node n3" />
-          <span className="node n4" />
-          <span className="node n5" />
-          <span className="route r1" />
-          <span className="route r2" />
-          <span className="route r3" />
-        </div>
-        <div className="network-copy">
-          <p className="eyebrow dark">The daylight network</p>
-          <h2 id="network-title">Every home makes the network stronger.</h2>
-          <p>
-            A decentralized energy company grows one address at a time:
-            rooftops generate, batteries store, and neighborhoods gain a little
-            more resilience together.
-          </p>
-          <a className="text-link" href="#qualify">
-            Check your address
-          </a>
-        </div>
-      </section>
-
-      <footer className="footer-section" aria-label="Footer">
-        <div className="footer-bg" aria-hidden="true" />
-        <div className="footer-main">
-          <BrandMark />
-          <nav className="footer-links" aria-label="Footer navigation">
-            <a href="#how">Blog</a>
-            <a href="#network">Brand kit</a>
-            <a href="#qualify">Careers</a>
-            <a href="#top">Support</a>
-          </nav>
-          <h2>More Power</h2>
-        </div>
-        <div className="footer-bottom">
-          <span>Energy for households</span>
-          <span>Solar, storage and rewards</span>
-        </div>
-      </footer>
-    </main>
-  );
+function Assistant() {
+  const [message,setMessage]=useState(""); const [sent,setSent]=useState<string[]>([]); const submit=()=>{if(message.trim()){setSent(v=>[...v,message]);setMessage("")}};
+  return <aside className="assistant-panel"><header><span className="spark">✣</span><div><b>Initial real estate inquiry</b><small>RPA — California Residential Pu...</small></div><button>▧</button><button>＋</button><button>↶</button></header><div className="conversation"><p>Hello! I&apos;m the form agent assistant, created by Orqestron. I&apos;m here to help you get your forms ready for Ariya Anna&apos;s deal.</p><p>We&apos;re currently in the <b>Onboarding</b> phase. Here is where we stand with the active forms:</p><ul>{assistantItems.map(item=><li key={item[0]}><b>{item[0]}</b> ({item[1]}) — {item[2]}</li>)}</ul><p>The <b>PRBS</b> is already open and just needs a few more details to finish. Would you like to start there, or should we jump into the <b>BRBC</b>?</p>{sent.map((text,i)=><p className="user-message" key={i}>{text}</p>)}</div><div className="context-card"><span>▧</span><div><b>RPA — California R...</b><small>Current form context</small></div><button>✣ Continue filling</button><i>×</i></div><div className="quick-actions"><button>ϟ</button><button className="active">› Continue</button><button>› Next form</button><button>☑ Check status</button></div><div className="prompt"><input value={message} onChange={e=>setMessage(e.target.value)} onKeyDown={e=>e.key==="Enter"&&submit()} placeholder="Ask about a clause or field..."/><button>♩</button><button className="submit" onClick={submit}>⌁</button></div></aside>;
 }
+
+export default function Page(){return <div className="workspace-app"><Rail/><section className="workspace"><DealHeader/><div className="workspace-grid"><FileTree/><Editor/><Assistant/></div></section></div>}
