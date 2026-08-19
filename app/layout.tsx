@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./icons.css";
 
 const description =
   "Orqestron real estate transaction workspace for forms, files, signatures, and AI-assisted deal management.";
