@@ -1,13 +1,14 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import "./icons.css";
 import "./form-editor.css";
 import "./polish.css";
+import "./orqestron-editor.css";
 
 const description =
-  "Orqestron real estate transaction workspace for forms, files, signatures, and AI-assisted deal management.";
+  "Orqestron real estate transaction workspace for forms, files, signatures, and AI-assisted transaction management.";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://pinnacle.local"),
   title: "Orqestron — Real Estate Transaction Workspace",
   description,
   applicationName: "Orqestron",
