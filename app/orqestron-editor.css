@@ -698,26 +698,6 @@
   padding: 18px 20px;
   border-color: var(--oq-line);
 }
-.oq-panel-close {
-  width: 44px;
-  height: 44px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--oq-muted);
-  display: grid;
-  place-items: center;
-  flex: 0 0 auto;
-}
-.oq-panel-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.oq-panel-close:hover {
-  background: var(--oq-soft);
-  color: var(--oq-ink);
-}
 .oq-eyebrow {
   font-size: 10px;
   font-weight: 700;
@@ -883,18 +863,18 @@
   pointer-events: none;
 }
 .oq-editor button.oq-add {
-  height: 44px;
-  min-width: 72px;
+  height: 40px;
+  min-width: 78px;
   justify-content: center;
   background: var(--oq-accent-dark);
   color: var(--oq-paper);
   border: 0;
-  border-radius: 7px;
-  padding: 0 11px;
+  border-radius: 8px;
+  padding: 0 14px;
   display: flex;
-  gap: 7px;
+  gap: 8px;
   align-items: center;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 .oq-editor button.oq-add:hover {
@@ -940,6 +920,7 @@
 .oq-doc-open {
   display: grid;
   grid-template-columns: 18px 24px minmax(0, 1fr);
+  align-items: start;
   gap: 9px;
   width: 100%;
   min-height: 56px;
@@ -981,8 +962,11 @@
 }
 .oq-drag-handle {
   display: grid;
+  width: 18px;
+  height: 24px;
+  align-self: start;
   place-items: center;
-  margin-top: 2px;
+  margin-top: 0;
   cursor: grab;
   color: var(--oq-muted);
 }
@@ -999,6 +983,7 @@
 .oq-file-icon {
   width: 24px;
   height: 24px;
+  align-self: start;
   border-radius: 0;
   background: transparent;
   color: var(--oq-accent-dark);
@@ -2314,6 +2299,9 @@
   .oq-documents,
   .oq-details-parties {
     padding-inline: 16px;
+  }
+  .oq-editor button.oq-add {
+    height: 44px;
   }
   .oq-modal-main {
     grid-template-columns: 210px minmax(0, 1fr);

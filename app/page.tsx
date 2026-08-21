@@ -874,11 +874,9 @@ function AddFormsModal({
 function FormsPanel({
   activeLabel,
   onOpen,
-  onClose,
 }: {
   activeLabel: string;
   onOpen: (document: string) => void;
-  onClose: () => void;
 }) {
   const [modal, setModal] = useState(false);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
@@ -925,19 +923,10 @@ function FormsPanel({
     <div className="oq-documents">
       <div className="oq-doc-toolbar oq-panel-heading">
         <h2>Workspace</h2>
-        <div className="oq-panel-actions">
-          <button className="oq-add" onClick={() => setModal(true)}>
-            <Icon name="plus" />
-            Add
-          </button>
-          <button
-            className="oq-panel-close"
-            aria-label="Close workspace panel"
-            onClick={onClose}
-          >
-            <Icon name="close" size={20} />
-          </button>
-        </div>
+        <button className="oq-add" onClick={() => setModal(true)}>
+          <Icon name="plus" />
+          Add
+        </button>
       </div>
       <label className="oq-document-search">
         <Icon name="search" />
@@ -1927,14 +1916,12 @@ function CrossFormCheckSummary({
 
 function DetailsPartiesPanel({
   onAddParty,
-  onClose,
   values,
   onChange,
   onNavigate,
   conflicts,
 }: {
   onAddParty: () => void;
-  onClose: () => void;
   values: Record<string, string>;
   onChange: (key: string, value: string) => void;
   onNavigate: (target: DetailPdfLink) => void;
@@ -1949,19 +1936,10 @@ function DetailsPartiesPanel({
     <div className="oq-details-parties">
       <div className="oq-details-heading oq-panel-heading">
         <h2>Details / Parties</h2>
-        <div className="oq-panel-actions">
-          <button className="oq-add" onClick={onAddParty}>
-            <Icon name="plus" />
-            Add
-          </button>
-          <button
-            className="oq-panel-close"
-            aria-label="Close details and parties panel"
-            onClick={onClose}
-          >
-            <Icon name="close" size={20} />
-          </button>
-        </div>
+        <button className="oq-add" onClick={onAddParty}>
+          <Icon name="plus" />
+          Add
+        </button>
       </div>
 
       <section className="oq-transaction-details" aria-labelledby="transaction-details-title">
@@ -2456,20 +2434,12 @@ export default function Page() {
             {panel === "assistant" && (
               <header className="oq-panel-heading">
                 <h2>Assistant</h2>
-                <button
-                  className="oq-panel-close"
-                  aria-label="Close panel"
-                  onClick={() => setPanelOpen(false)}
-                >
-                  <Icon name="close" size={24} />
-                </button>
               </header>
             )}
             {panel === "forms" ? (
               <FormsPanel
                 activeLabel={pdf.label}
                 onOpen={openDocument}
-                onClose={() => setPanelOpen(false)}
               />
             ) : panel === "assistant" ? (
               <AssistantPanel
@@ -2481,7 +2451,6 @@ export default function Page() {
             ) : (
               <DetailsPartiesPanel
                 onAddParty={() => setPartyOpen(true)}
-                onClose={() => setPanelOpen(false)}
                 values={detailValues}
                 onChange={updateDetailValue}
                 onNavigate={goToLinkedField}
