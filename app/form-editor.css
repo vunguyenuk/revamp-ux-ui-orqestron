@@ -56,7 +56,7 @@
   border-radius: 5px;
   background: transparent;
   color: var(--fe-blue);
-  font-weight: 650;
+  font-weight: var(--fw-medium);
 }
 
 .fe-title {
@@ -65,7 +65,7 @@
   align-items: center;
   gap: 8px;
   overflow: hidden;
-  font-size: 16px;
+  font-size: var(--text-lg);
   white-space: nowrap;
   text-overflow: ellipsis;
 }
@@ -80,7 +80,7 @@
 }
 
 .fe-heading > b {
-  font-size: 13px;
+  font-size: var(--text-md);
 }
 
 .fe-toolbar {
@@ -130,7 +130,7 @@
   border-left: 1px solid var(--fe-line);
   background: transparent;
   color: var(--fe-blue);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .fe-tool-actions button:hover {
@@ -184,13 +184,13 @@
 
 .fe-context > header h2 {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--text-2xl);
 }
 
 .fe-context > header p {
   margin: 2px 0 0;
   color: var(--fe-muted);
-  font-size: 11px;
+  font-size: var(--text-xs);
 }
 
 .fe-context > header > button {
@@ -220,8 +220,8 @@
   border-bottom: 1px solid var(--fe-line);
   background: transparent;
   color: var(--fe-muted);
-  font-size: 10px;
-  font-weight: 650;
+  font-size: var(--text-2xs);
+  font-weight: var(--fw-medium);
   text-transform: uppercase;
 }
 
@@ -273,7 +273,7 @@
   }
 
   .fe-title {
-    font-size: 13px;
+    font-size: var(--text-md);
   }
 
   .fe-tool-actions button {

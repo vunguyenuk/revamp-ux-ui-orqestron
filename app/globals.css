@@ -3,6 +3,23 @@
   --muted: #88827a;
   --line: #dedbd4;
   --accent: #c36d46;
+
+  /* Type scale — every font-size in the app resolves to one of these seven
+     steps. Add a step here rather than a one-off px value in a component. */
+  --text-2xs: 11px;  /* uppercase micro-labels, counters, page badges */
+  --text-xs: 12px;   /* meta and helper text under a control */
+  --text-sm: 13px;   /* field labels, secondary body */
+  --text-md: 14px;   /* body, inputs, list titles */
+  --text-lg: 16px;   /* sub-section headings */
+  --text-xl: 19px;   /* card and dialog titles */
+  --text-2xl: 22px;  /* panel and page titles */
+
+  /* Weights. Avenir Next is not a variable font — it gives us Regular, Medium,
+     Demi Bold and Bold, so three steps is all that reads as distinct. Headings
+     sit at Demi Bold rather than Bold; at these sizes Bold shouts. */
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-bold: 600;
 }
 
 * {

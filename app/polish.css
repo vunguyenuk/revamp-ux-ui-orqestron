@@ -1,12 +1,8 @@
 /* Final consistency layer: 4px spatial scale and accessible touch targets. */
 .form-editor {
   --control-md: 40px;
-  --text-xs: 0.6875rem;
-  --text-sm: 0.8125rem;
-  --text-md: 0.9375rem;
-  --text-lg: 1.125rem;
   grid-template-rows: 56px 64px minmax(0, 1fr);
-  font-size: var(--text-sm);
+  font-size: var(--text-md);
 }
 
 .fe-heading {
@@ -21,13 +17,13 @@
 
 .fe-title {
   gap: 6px;
-  font-size: var(--text-md);
-  font-weight: 500;
+  font-size: var(--text-lg);
+  font-weight: var(--fw-medium);
 }
 
 .fe-heading > b {
-  font-size: var(--text-sm);
-  font-weight: 650;
+  font-size: var(--text-md);
+  font-weight: var(--fw-medium);
 }
 
 .fe-title button,
@@ -71,7 +67,7 @@
 }
 
 .fe-context > header h2 {
-  font-size: var(--text-lg);
+  font-size: var(--text-xl);
   line-height: 1.2;
 }
 
@@ -83,7 +79,7 @@
 .fe-mode-rail button {
   height: 92px;
   gap: 8px;
-  font-size: 0.625rem;
+  font-size: var(--text-2xs);
   letter-spacing: 0.04em;
 }
 
