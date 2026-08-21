@@ -38,8 +38,17 @@
   background: var(--surface);
 }
 
+.brandRow {
+  display: flex;
+  height: 64px;
+  align-items: center;
+  padding-right: 8px;
+}
+
 .brand {
   display: flex;
+  min-width: 0;
+  flex: 1;
   height: 64px;
   align-items: center;
   gap: 10px;
@@ -61,9 +70,34 @@
 }
 
 .brand > b {
+  min-width: 0;
+  overflow: hidden;
   font-size: 17px;
   font-weight: 650;
   letter-spacing: -0.02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sidebarBackButton,
+.mobileBackButton {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  flex: 0 0 44px;
+  place-items: center;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+}
+
+.sidebarBackButton:hover,
+.mobileBackButton:hover {
+  background: var(--canvas);
+}
+
+.mobileBackButton {
+  display: none;
 }
 
 .organization {
@@ -226,26 +260,16 @@
   position: relative;
   z-index: 3;
   display: grid;
-  grid-template-columns: 56px minmax(250px, 1fr) auto;
+  grid-template-columns: minmax(250px, 1fr) auto;
   align-items: center;
   border-bottom: 1px solid var(--line);
   background: color-mix(in oklch, var(--canvas) 96%, var(--surface));
 }
 
-.backButton {
-  display: grid;
-  width: 56px;
-  height: 56px;
-  place-items: center;
-  border: 0;
-  border-right: 1px solid var(--line);
-  background: transparent;
-}
-
 .heading {
   display: grid;
   gap: 1px;
-  padding-left: 13px;
+  padding-left: 20px;
 }
 
 .heading h1 {
@@ -472,8 +496,11 @@
     grid-template-columns: 48px 1fr auto;
   }
 
-  .backButton {
+  .mobileBackButton {
+    display: grid;
     width: 48px;
+    height: 56px;
+    border-right: 1px solid var(--line);
   }
 
   .heading p {

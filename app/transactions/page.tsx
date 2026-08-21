@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import styles from "./transactions.module.css";
+import { activeTransactionName } from "../transaction-data";
 
 export const metadata: Metadata = {
   title: "Transactions — Orqestron",
@@ -110,8 +111,12 @@ function NavItem({
 
 function TransactionCard() {
   return (
-    <Link className={styles.transactionCard} href="/" aria-label="Open Ariya Anna transaction">
-      <div className={styles.transactionName}>Ariya Anna</div>
+    <Link
+      className={styles.transactionCard}
+      href="/"
+      aria-label={`Open ${activeTransactionName} transaction`}
+    >
+      <div className={styles.transactionName}>{activeTransactionName}</div>
       <div className={styles.location}>
         <span aria-hidden="true">⌾</span> CA
       </div>
@@ -137,10 +142,15 @@ export default function TransactionsPage() {
   return (
     <main className={styles.shell}>
       <aside className={styles.sidebar}>
-        <Link className={styles.brand} href="/transactions">
-          <span>O</span>
-          <b>Orqestron</b>
-        </Link>
+        <div className={styles.brandRow}>
+          <Link className={styles.brand} href="/transactions">
+            <span>O</span>
+            <b>Orqestron</b>
+          </Link>
+          <Link className={styles.sidebarBackButton} href="/" aria-label="Open transaction editor">
+            <Icon name="back" size={20} />
+          </Link>
+        </div>
 
         <button className={styles.organization}>
           <span>
@@ -179,7 +189,7 @@ export default function TransactionsPage() {
 
       <section className={styles.workspace}>
         <header className={styles.topbar}>
-          <button className={styles.backButton} aria-label="Back">
+          <button className={styles.mobileBackButton} aria-label="Back">
             <Icon name="back" size={20} />
           </button>
           <div className={styles.heading}>
