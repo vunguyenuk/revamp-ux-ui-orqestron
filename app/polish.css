@@ -18,12 +18,12 @@
 .fe-title {
   gap: 6px;
   font-size: var(--text-lg);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw);
 }
 
 .fe-heading > b {
   font-size: var(--text-md);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw);
 }
 
 .fe-title button,

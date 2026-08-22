@@ -14,12 +14,10 @@
   --text-xl: 19px;   /* card and dialog titles */
   --text-2xl: 22px;  /* panel and page titles */
 
-  /* Weights. Avenir Next is not a variable font — it gives us Regular, Medium,
-     Demi Bold and Bold, so three steps is all that reads as distinct. Headings
-     sit at Demi Bold rather than Bold; at these sizes Bold shouts. */
-  --fw-regular: 400;
-  --fw-medium: 500;
-  --fw-bold: 600;
+  /* One weight for the entire product. Hierarchy is carried by size and colour
+     instead of weight, so there is a single value to change here. Avenir Next
+     resolves 600 to Demi Bold. */
+  --fw: 600;
 }
 
 * {
@@ -38,6 +36,22 @@ body {
 body {
   font-family: Inter, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
+}
+
+body,
+button,
+input,
+select,
+textarea,
+b,
+strong,
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: var(--fw);
 }
 
 button,

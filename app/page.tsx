@@ -605,7 +605,7 @@ function SignaturePackageFlow({
           <header>
             <span className="oq-signature-kicker">Signature package</span>
             <h3>Prepare documents for signing</h3>
-            <p>Choose the forms your clients need to sign with DocuSign.</p>
+            <p>Choose the forms your clients need to sign.</p>
           </header>
 
           <section className="oq-provider-summary" aria-label="Signature provider">
@@ -785,7 +785,7 @@ function displayPdfFieldValue(field: PdfFieldDefinition, value: string) {
   return match ? `${match[2]}/${match[3]}/${match[1]}` : value;
 }
 
-const docuSignDateFieldIds = new Set(
+const signingDateFieldIds = new Set(
   (Object.keys(pdfFieldsByDocument) as PdfDocumentCode[]).flatMap((code) =>
     pdfFieldsByDocument[code]
       .filter((field) => {
@@ -810,11 +810,11 @@ const docuSignDateFieldIds = new Set(
   ),
 );
 
-function isDocuSignDateField(
+function isSigningDateField(
   documentCode: PdfDocumentCode,
   field: PdfFieldDefinition,
 ) {
-  return docuSignDateFieldIds.has(`${documentCode}:${field.id}`);
+  return signingDateFieldIds.has(`${documentCode}:${field.id}`);
 }
 
 const linkedFieldProvenance = [
@@ -837,14 +837,12 @@ function PdfFieldPopover({
   onSave: (value: string) => void;
 }) {
   const [draft, setDraft] = useState(value);
-  const docuSignDate = isDocuSignDateField(documentCode, field);
   const normalizedDraft = draft.trim();
   const normalizedValue = value.trim();
   const canApply =
-    !docuSignDate &&
     normalizedDraft !== normalizedValue &&
     (normalizedDraft.length > 0 || normalizedValue.length > 0);
-  const suggestions = docuSignDate ? [] : suggestionsForPdfField(field);
+  const suggestions = suggestionsForPdfField(field);
   const placeAbove = field.top > 68;
   const anchoredStyle: React.CSSProperties = {
     top: `${placeAbove ? field.top : field.top + field.height}%`,
@@ -859,11 +857,7 @@ function PdfFieldPopover({
       className="oq-field-popover"
       style={anchoredStyle}
       role="dialog"
-      aria-label={
-        docuSignDate
-          ? `${field.label}, auto-filled by DocuSign`
-          : `Fill ${field.label}`
-      }
+      aria-label={`Fill ${field.label}`}
       onClick={(event) => event.stopPropagation()}
       onSubmit={(event) => {
         event.preventDefault();
@@ -876,26 +870,21 @@ function PdfFieldPopover({
       <header>
         <div>
           <small>{documentCode} · PAGE {field.page}</small>
-          <h3>{docuSignDate ? "Signing date" : field.label}</h3>
+          <h3>{field.label}</h3>
         </div>
         <button type="button" onClick={onClose} aria-label="Close field editor">
           <Icon name="close" size={16} />
         </button>
       </header>
-      {docuSignDate ? (
-        <label className="oq-readonly-signing-date">
-          <span>Signing date</span>
-          <input value="Auto-filled by DocuSign" readOnly aria-readonly="true" />
-        </label>
-      ) : field.kind === "signature" ? (
+      {field.kind === "signature" ? (
         <div className="oq-signature-field-editor">
           <div>
             <span>Signature</span>
-            <span className="oq-docusign-signature-slot">
+            <span className="oq-signature-slot">
               <Icon name="sign" size={20} />
               <span>
                 <b>Sign here</b>
-                <small>Added in DocuSign</small>
+                <small>Added at signing</small>
               </span>
             </span>
           </div>
@@ -945,28 +934,22 @@ function PdfFieldPopover({
           })}
         </div>
       )}
-      {docuSignDate ? (
-        <p>DocuSign adds this date automatically when the recipient signs.</p>
-      ) : field.kind === "signature" ? (
-        <p>DocuSign collects the signature; the name is shown beside it.</p>
+      {field.kind === "signature" ? (
+        <p>
+          The e-sign provider collects the signature and stamps the date beside
+          it; the name below is what prints on the form.
+        </p>
       ) : null}
       <footer>
         <small>
-          {docuSignDate
-            ? "No entry required"
-            : `${draft.length}${field.kind === "text" || field.kind === "signature" ? " / 120" : ""} characters`}
+          {draft.length}
+          {field.kind === "text" || field.kind === "signature" ? " / 120" : ""} characters
         </small>
         <span>
-          {docuSignDate ? (
-            <button type="button" onClick={onClose}>Close</button>
-          ) : (
-            <>
-              <button type="button" onClick={onClose}>Cancel</button>
-              <button type="submit" className="primary" disabled={!canApply}>
-                Apply
-              </button>
-            </>
-          )}
+          <button type="button" onClick={onClose}>Cancel</button>
+          <button type="submit" className="primary" disabled={!canApply}>
+            Apply
+          </button>
         </span>
       </footer>
     </form>
@@ -1366,40 +1349,41 @@ function FormsPanel({
           role="search"
           onSubmit={(event) => event.preventDefault()}
         >
-          <div className="oq-grab-search">
-            <Icon name="search" />
-            <input
-              aria-label="Search available forms by name or code"
-              placeholder="Search by form name or code"
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-            />
-            {query && (
-              <button
-                type="button"
-                aria-label="Clear form search"
-                onClick={() => setQuery("")}
-              >
-                <Icon name="close" size={14} />
-              </button>
-            )}
-          </div>
           <div className="oq-grab-filter-row">
-            <small aria-live="polite">
-              {filteredAvailableForms.length} {filteredAvailableForms.length === 1 ? "result" : "results"}
-            </small>
-            <label className="oq-grab-folder">
-              <span>Folder</span>
-              <select
-                aria-label="Filter available forms by folder"
-                value={folder}
-                onChange={(event) => setFolder(event.target.value)}
-              >
-                <option value="all">All folders</option>
-                <option value="forms">Forms only</option>
-              </select>
-            </label>
+            <div className="oq-grab-search">
+              <Icon name="search" />
+              <input
+                aria-label="Search available forms by name or code"
+                placeholder="Search forms"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+              />
+              {query && (
+                <button
+                  type="button"
+                  aria-label="Clear form search"
+                  onClick={() => setQuery("")}
+                >
+                  <Icon name="close" size={14} />
+                </button>
+              )}
+            </div>
+            {/* The option text already says "folders" — a separate label would
+                only repeat it and cost width the search field needs. */}
+            <select
+              className="oq-grab-folder"
+              aria-label="Filter available forms by folder"
+              value={folder}
+              onChange={(event) => setFolder(event.target.value)}
+            >
+              <option value="all">All folders</option>
+              <option value="forms">Forms only</option>
+            </select>
           </div>
+          <small className="oq-grab-count" aria-live="polite">
+            {filteredAvailableForms.length}{" "}
+            {filteredAvailableForms.length === 1 ? "result" : "results"}
+          </small>
         </form>
         {filteredAvailableForms.length > 0 ? (
           <div className="oq-available-list">
@@ -1773,7 +1757,6 @@ function AssistantPanel({
 }
 
 type DetailSectionKey =
-  | "parties"
   | "property"
   | "listing"
   | "purchase"
@@ -2441,6 +2424,22 @@ const makeParty = (
 
 const isAgentRole = (role: string) => /agent|coordinator/i.test(role);
 
+/** Roles group by side of the deal, not by exact title — otherwise a four-party
+ *  transaction becomes four groups of one. */
+const partyGroupOf = (role: string) => {
+  if (isAgentRole(role)) return "agents";
+  if (/buyer/i.test(role)) return "buyers";
+  if (/seller/i.test(role)) return "sellers";
+  return "other";
+};
+
+const partyGroupOrder = [
+  { key: "buyers", label: "Buyers" },
+  { key: "sellers", label: "Sellers" },
+  { key: "agents", label: "Agents" },
+  { key: "other", label: "Other" },
+] as const;
+
 /**
  * One party is shown at a time and its field set follows its role, so the panel
  * never renders more than a dozen inputs even though the transaction carries
@@ -2491,29 +2490,21 @@ const partyDisplay = (
   return { name: name || "New party", role: role || "No role set", initials };
 };
 
-const PREFILL_SECTIONS = new Set<DetailSectionKey>([
-  "parties",
-  "property",
-  "listing",
-]);
+const PREFILL_SECTIONS = new Set<DetailSectionKey>(["property", "listing"]);
 
-function DetailsPartiesPanel({
+function PartiesPanel({
   onAddParty,
   values,
   onChange,
   onNavigate,
-  conflicts,
   onClose,
 }: {
   onAddParty: () => void;
   values: Record<string, string>;
   onChange: (key: string, value: string) => void;
   onNavigate: (target: DetailPdfLink) => void;
-  conflicts: LinkedFieldConflict[];
   onClose: () => void;
 }) {
-  const [activeSection, setActiveSection] =
-    useState<DetailSectionKey>("parties");
   const [parties, setParties] = useState<TransactionParty[]>(() => [
     makeParty("primary", [...agentContactFields, ...agentBrokerageFields]),
     makeParty("buyer-1", [...clientContactFields, ...buyerDetailFields], {
@@ -2543,135 +2534,236 @@ function DetailsPartiesPanel({
       },
     ),
   ]);
-  const [activePartyId, setActivePartyId] = useState("primary");
-  const detailFormPaneRef = useRef<HTMLElement | null>(null);
+  // null = the roster. The panel is only as wide as the Docs panel, so one
+  // party's fields get the full width instead of sharing it with a sidebar.
+  const [openPartyId, setOpenPartyId] = useState<string | null>(null);
+  const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
+  const paneRef = useRef<HTMLDivElement | null>(null);
+
+  const openParty = parties.find((party) => party.id === openPartyId) ?? null;
+  const sharedPartyKeys = new Set(partyFields.map((field) => field.key));
+
+  const showParty = (id: string | null) => {
+    setOpenPartyId(id);
+    requestAnimationFrame(() => {
+      paneRef.current?.scrollTo({ top: 0, behavior: "auto" });
+    });
+  };
+
+  if (!openParty) {
+    return (
+      <div className="oq-parties-panel" ref={paneRef}>
+        <div className="oq-panel-bar oq-panel-heading">
+          <h2>Parties</h2>
+          <button className="oq-add-party" onClick={onAddParty}>
+            <Icon name="plus" />
+            Add party
+          </button>
+          <button
+            className="oq-panel-close"
+            aria-label="Close parties panel"
+            onClick={onClose}
+          >
+            <Icon name="close" />
+          </button>
+        </div>
+        <div className="oq-party-list">
+          {partyGroupOrder.map((group) => {
+            const members = parties.filter(
+              (party) =>
+                partyGroupOf(partyDisplay(party, values).role) === group.key,
+            );
+            if (members.length === 0) return null;
+            const collapsed = collapsedGroups.includes(group.key);
+            return (
+              <section
+                key={group.key}
+                className={`oq-party-group ${collapsed ? "is-collapsed" : ""}`}
+              >
+                <h3>
+                  <button
+                    type="button"
+                    aria-expanded={!collapsed}
+                    onClick={() =>
+                      setCollapsedGroups((current) =>
+                        current.includes(group.key)
+                          ? current.filter((key) => key !== group.key)
+                          : [...current, group.key],
+                      )
+                    }
+                  >
+                    <Icon name="chevron" size={14} />
+                    {group.label}
+                    <small>{members.length}</small>
+                  </button>
+                </h3>
+                {!collapsed &&
+                  members.map((party) => {
+                  const info = partyDisplay(party, values);
+                  return (
+                    <button
+                      type="button"
+                      key={party.id}
+                      className="oq-party-summary"
+                      onClick={() => showParty(party.id)}
+                    >
+                      <span className="oq-party-avatar">{info.initials}</span>
+                      <span>
+                        <b>{info.name}</b>
+                        <small>{info.role}</small>
+                      </span>
+                      <Icon name="chevron" size={16} />
+                    </button>
+                  );
+                  })}
+              </section>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
+  const info = partyDisplay(openParty, values);
+  const partyValues =
+    openParty.id === "primary"
+      ? { ...openParty.values, ...values }
+      : openParty.values;
+  const handlePartyChange = (key: string, value: string) => {
+    if (openParty.id === "primary" && sharedPartyKeys.has(key)) {
+      onChange(key, value);
+      return;
+    }
+    setParties((current) =>
+      current.map((party) =>
+        party.id === openParty.id
+          ? { ...party, values: { ...party.values, [key]: value } }
+          : party,
+      ),
+    );
+  };
+
+  return (
+    <div className="oq-parties-panel" ref={paneRef}>
+      <div className="oq-panel-bar oq-panel-heading">
+        <button
+          className="oq-panel-back"
+          type="button"
+          onClick={() => showParty(null)}
+        >
+          <Icon name="chevron" size={16} />
+          Parties
+        </button>
+        <button
+          className="oq-panel-close"
+          aria-label="Close parties panel"
+          onClick={onClose}
+        >
+          <Icon name="close" />
+        </button>
+      </div>
+      <div className="oq-panel-body">
+        <header className="oq-panel-intro">
+          <h3>{info.name}</h3>
+          <p>{info.role}</p>
+          <span className="oq-prefill-legend">
+            <i aria-hidden="true" />
+            Marked fields came from Create Transaction
+          </span>
+        </header>
+        {partyFormGroups(openParty).map((group, index) => (
+          <div key={group.heading ?? `group-${index}`}>
+            {group.heading && (
+              <h5 className={`oq-form-subheading ${index === 0 ? "first" : ""}`}>
+                {group.heading}
+              </h5>
+            )}
+            <EditableFieldGrid
+              fields={group.fields}
+              values={partyValues}
+              onChange={handlePartyChange}
+              onNavigate={onNavigate}
+              baseline={openParty.baseline}
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function DetailsPanel({
+  values,
+  onChange,
+  onNavigate,
+  conflicts,
+  onClose,
+}: {
+  values: Record<string, string>;
+  onChange: (key: string, value: string) => void;
+  onNavigate: (target: DetailPdfLink) => void;
+  conflicts: LinkedFieldConflict[];
+  onClose: () => void;
+}) {
+  const [activeSection, setActiveSection] =
+    useState<DetailSectionKey>("property");
+  const paneRef = useRef<HTMLDivElement | null>(null);
   const sections: Array<{
     key: DetailSectionKey;
     label: string;
     title: string;
     description: string;
+    groups: Array<{ heading?: string; fields: EditableDetailField[] }>;
   }> = [
-    {
-      key: "parties",
-      label: "Parties",
-      title: "Party details",
-      description: "Names, contact details, and roles used across linked forms.",
-    },
     {
       key: "property",
       label: "Property",
       title: "Property information",
       description: "Address, parcel, tax, and legal property details.",
+      groups: [{ fields: propertyFields }],
     },
     {
       key: "listing",
       label: "Listing",
       title: "Listing information",
       description: "Listing dates, pricing, liens, and transaction notes.",
+      groups: [{ fields: listingFields }],
     },
     {
       key: "purchase",
       label: "Purchase",
       title: "Purchase information",
       description: "Offer terms, financing, contingencies, and key dates.",
+      groups: [
+        { fields: purchaseFields },
+        { heading: "Key dates", fields: keyDateFields },
+      ],
     },
     {
       key: "commission",
       label: "Commission",
       title: "Commission details",
       description: "Listing and purchase commission allocations.",
+      groups: [
+        { heading: "Listing commission", fields: listingCommissionFields },
+        { heading: "Purchase commission", fields: purchaseCommissionFields },
+      ],
     },
   ];
-  const selectedSection = sections.find(
-    (section) => section.key === activeSection,
-  ) ?? sections[0];
-  const selectDetailSection = (section: DetailSectionKey) => {
-    setActiveSection(section);
+  const selectedSection =
+    sections.find((section) => section.key === activeSection) ?? sections[0];
+
+  const selectSection = (key: DetailSectionKey) => {
+    setActiveSection(key);
     requestAnimationFrame(() => {
-      detailFormPaneRef.current?.scrollTo({ top: 0, behavior: "auto" });
+      paneRef.current?.scrollTo({ top: 0, behavior: "auto" });
     });
   };
 
-  const activeParty =
-    parties.find((party) => party.id === activePartyId) ?? parties[0];
-  const activePartyDisplay = partyDisplay(activeParty, values);
-  const sharedPartyKeys = new Set(partyFields.map((field) => field.key));
-  const partyValues =
-    activeParty.id === "primary"
-      ? { ...activeParty.values, ...values }
-      : activeParty.values;
-  const handlePartyChange = (key: string, value: string) => {
-    if (activeParty.id === "primary" && sharedPartyKeys.has(key)) {
-      onChange(key, value);
-      return;
-    }
-    setParties((current) =>
-      current.map((party) =>
-        party.id === activeParty.id
-          ? { ...party, values: { ...party.values, [key]: value } }
-          : party,
-      ),
-    );
-  };
-  const selectParty = (id: string) => {
-    setActivePartyId(id);
-    selectDetailSection("parties");
-  };
-
-  const sectionForm = (() => {
-    if (activeSection === "parties") {
-      return (
-        <>
-          {partyFormGroups(activeParty).map((group, index) => (
-            <div key={group.heading ?? `group-${index}`}>
-              {group.heading && (
-                <h5 className={`oq-form-subheading ${index === 0 ? "first" : ""}`}>
-                  {group.heading}
-                </h5>
-              )}
-              <EditableFieldGrid
-                fields={group.fields}
-                values={partyValues}
-                onChange={handlePartyChange}
-                onNavigate={onNavigate}
-                baseline={activeParty.baseline}
-              />
-            </div>
-          ))}
-        </>
-      );
-    }
-    if (activeSection === "property") {
-      return <EditableFieldGrid fields={propertyFields} values={values} onChange={onChange} onNavigate={onNavigate} />;
-    }
-    if (activeSection === "listing") {
-      return <EditableFieldGrid fields={listingFields} values={values} onChange={onChange} onNavigate={onNavigate} />;
-    }
-    if (activeSection === "purchase") {
-      return (
-        <>
-          <EditableFieldGrid fields={purchaseFields} values={values} onChange={onChange} onNavigate={onNavigate} />
-          <h5 className="oq-form-subheading">Key dates</h5>
-          <EditableFieldGrid fields={keyDateFields} values={values} onChange={onChange} onNavigate={onNavigate} />
-        </>
-      );
-    }
-    return (
-      <>
-        <h5 className="oq-form-subheading first">Listing commission</h5>
-        <EditableFieldGrid fields={listingCommissionFields} values={values} onChange={onChange} onNavigate={onNavigate} />
-        <h5 className="oq-form-subheading">Purchase commission</h5>
-        <EditableFieldGrid fields={purchaseCommissionFields} values={values} onChange={onChange} onNavigate={onNavigate} />
-      </>
-    );
-  })();
-
   return (
-    <div className="oq-details-parties">
-      <div className="oq-details-heading oq-panel-heading">
-        <span>
-          <h2>Details &amp; parties</h2>
-        </span>
+    <div className="oq-details-panel" ref={paneRef}>
+      <div className="oq-panel-bar oq-panel-heading">
+        <h2>Details</h2>
         <button
           className="oq-panel-close"
           aria-label="Close details panel"
@@ -2680,99 +2772,54 @@ function DetailsPartiesPanel({
           <Icon name="close" />
         </button>
       </div>
-
-      <div className="oq-details-workspace">
-        <aside className="oq-details-sidebar" aria-label="Transaction overview">
-          <section className="oq-transaction-details" aria-label="Transaction status">
-            <CrossFormCheckSummary conflicts={conflicts} onNavigate={onNavigate} />
-          </section>
-
-          <section className="oq-participant-overview" aria-labelledby="participant-overview-title">
-            <header>
-              <h3 id="participant-overview-title">Parties</h3>
-              <button className="oq-add-party" onClick={onAddParty}>
-                <Icon name="plus" />
-                Add party
-              </button>
-            </header>
-            <div className="oq-party-list">
-              {parties.map((party) => {
-                const info = partyDisplay(party, values);
-                const isActive =
-                  activeSection === "parties" && party.id === activePartyId;
-                return (
-                  <button
-                    type="button"
-                    key={party.id}
-                    className={`oq-party-summary ${isActive ? "active" : ""}`}
-                    aria-pressed={isActive}
-                    onClick={() => selectParty(party.id)}
-                  >
-                    <span className="oq-party-avatar">{info.initials}</span>
-                    <span>
-                      <b>{info.name}</b>
-                      <small>{info.role}</small>
-                    </span>
-                  </button>
-                );
-              })}
-            </div>
-          </section>
-
-          <nav className="oq-detail-menu" aria-label="Transaction detail sections">
-            {sections.map((section) => (
-              <button
-                id={`detail-tab-${section.key}`}
-                key={section.key}
-                type="button"
-                aria-pressed={activeSection === section.key}
-                aria-controls={`detail-panel-${section.key}`}
-                onClick={() => selectDetailSection(section.key)}
-              >
-                <span>{section.label}</span>
-              </button>
-            ))}
-          </nav>
-        </aside>
-
-        <section
-          ref={detailFormPaneRef}
-          className="oq-detail-form-pane"
-          id={`detail-panel-${activeSection}`}
-          role="region"
-          aria-labelledby={`detail-tab-${activeSection}`}
-        >
-          <header>
-            <h3>
-              {activeSection === "parties"
-                ? activePartyDisplay.name
-                : selectedSection.title}
-            </h3>
-            <p>
-              {activeSection === "parties"
-                ? activePartyDisplay.role
-                : selectedSection.description}
-            </p>
-            {PREFILL_SECTIONS.has(activeSection) && (
-              <span className="oq-prefill-legend">
-                <i aria-hidden="true" />
-                Marked fields came from Create Transaction
-              </span>
+      <nav className="oq-section-tabs" aria-label="Transaction detail sections">
+        {sections.map((section) => (
+          <button
+            key={section.key}
+            type="button"
+            aria-pressed={activeSection === section.key}
+            onClick={() => selectSection(section.key)}
+          >
+            {section.label}
+          </button>
+        ))}
+      </nav>
+      <div className="oq-panel-body" key={activeSection}>
+        <CrossFormCheckSummary conflicts={conflicts} onNavigate={onNavigate} />
+        <header className="oq-panel-intro">
+          <h3>{selectedSection.title}</h3>
+          <p>{selectedSection.description}</p>
+          {PREFILL_SECTIONS.has(activeSection) && (
+            <span className="oq-prefill-legend">
+              <i aria-hidden="true" />
+              Marked fields came from Create Transaction
+            </span>
+          )}
+        </header>
+        {selectedSection.groups.map((group, index) => (
+          <div key={group.heading ?? `group-${index}`}>
+            {group.heading && (
+              <h5 className={`oq-form-subheading ${index === 0 ? "first" : ""}`}>
+                {group.heading}
+              </h5>
             )}
-          </header>
-          <div className="oq-detail-form-body" key={activeSection}>
-            {sectionForm}
+            <EditableFieldGrid
+              fields={group.fields}
+              values={values}
+              onChange={onChange}
+              onNavigate={onNavigate}
+            />
           </div>
-        </section>
+        ))}
       </div>
     </div>
   );
 }
 
 export default function Page() {
-  const [panel, setPanel] = useState<"forms" | "assistant" | "details">(
-    "forms",
-  );
+  const [panel, setPanel] = useState<
+    "forms" | "assistant" | "details" | "parties"
+  >("forms");
   const [zoom, setZoom] = useState("Fit width");
   const [zoomOpen, setZoomOpen] = useState(false);
   const [panelOpen, setPanelOpen] = useState(true);
@@ -2805,7 +2852,9 @@ export default function Page() {
   const stageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const linkedHighlightTimerRef = useRef<number | null>(null);
 
-  const selectPanel = (nextPanel: "forms" | "assistant" | "details") => {
+  const selectPanel = (
+    nextPanel: "forms" | "assistant" | "details" | "parties",
+  ) => {
     if (panel === nextPanel && panelOpen) {
       setPanelOpen(false);
       return;
@@ -2988,7 +3037,7 @@ export default function Page() {
   };
   return (
     <main
-      className={`form-editor oq-editor oq-zoom-${zoom.toLowerCase().replace(" ", "-")} ${panelOpen ? "" : "oq-panel-collapsed"} ${panel === "details" && panelOpen ? "oq-details-active" : ""}`}
+      className={`form-editor oq-editor oq-zoom-${zoom.toLowerCase().replace(" ", "-")} ${panelOpen ? "" : "oq-panel-collapsed"} `}
     >
       <header className="fe-heading">
         <EditorNavigationFlyout />
@@ -3095,7 +3144,7 @@ export default function Page() {
                     const id = `${documentCode}:${field.id}`;
                     const value = pdfFieldValues[id] ?? field.value ?? "";
                     const checked = checkedFields.includes(id);
-                    const docuSignDate = isDocuSignDateField(
+                    const signingDate = isSigningDateField(
                       documentCode,
                       field,
                     );
@@ -3104,11 +3153,29 @@ export default function Page() {
                       fieldId: field.id,
                     });
                     const linked = isLinkedPdfField(documentCode, field.id);
+                    if (signingDate) {
+                      // Filled in by whichever e-sign provider the transaction
+                      // runs through, so it stays empty and non-editable here.
+                      return (
+                        <span
+                          key={id}
+                          className="oq-pdf-field is-signing-date"
+                          style={{
+                            left: `${field.left}%`,
+                            top: `${field.top}%`,
+                            width: `${field.width}%`,
+                            height: `${field.height}%`,
+                          }}
+                          title="Added automatically when the document is signed"
+                          aria-hidden="true"
+                        />
+                      );
+                    }
                     return (
                       <button
                         key={id}
                         id={linked ? domId : undefined}
-                        className={`oq-pdf-field ${field.kind === "checkbox" ? "is-checkbox" : ""} ${field.kind === "signature" ? "is-signature" : ""} ${docuSignDate ? "is-docusign-date" : ""} ${checked ? "checked" : ""} ${value ? "has-value" : ""} ${linkedHighlightId === domId ? "is-linked-target" : ""}`}
+                        className={`oq-pdf-field ${field.kind === "checkbox" ? "is-checkbox" : ""} ${field.kind === "signature" ? "is-signature" : ""} ${checked ? "checked" : ""} ${value ? "has-value" : ""} ${linkedHighlightId === domId ? "is-linked-target" : ""}`}
                         style={{
                           left: `${field.left}%`,
                           top: `${field.top}%`,
@@ -3122,8 +3189,6 @@ export default function Page() {
                         aria-label={
                           field.kind === "checkbox"
                             ? `Toggle ${field.label}`
-                            : docuSignDate
-                              ? `${field.label}, auto-filled by DocuSign`
                             : `Fill ${field.label}`
                         }
                         onClick={() => {
@@ -3141,8 +3206,6 @@ export default function Page() {
                       >
                         {value ? (
                           <span>{displayPdfFieldValue(field, value)}</span>
-                        ) : docuSignDate ? (
-                          <span>DocuSign</span>
                         ) : null}
                       </button>
                     );
@@ -3183,7 +3246,7 @@ export default function Page() {
         </section>
         {panelOpen && (
           <aside
-            className={`fe-context ${panel === "forms" || panel === "details" ? "oq-context-headless" : ""}`}
+            className={`fe-context ${panel !== "assistant" ? "oq-context-headless" : ""}`}
           >
             {panel === "assistant" && (
               <header className="oq-panel-heading">
@@ -3212,9 +3275,16 @@ export default function Page() {
                 documentTitle={pdf.title}
                 page={pdf.page}
               />
-            ) : (
-              <DetailsPartiesPanel
+            ) : panel === "parties" ? (
+              <PartiesPanel
                 onAddParty={() => setPartyOpen(true)}
+                values={detailValues}
+                onChange={updateDetailValue}
+                onNavigate={goToLinkedField}
+                onClose={() => setPanelOpen(false)}
+              />
+            ) : (
+              <DetailsPanel
                 values={detailValues}
                 onChange={updateDetailValue}
                 onNavigate={goToLinkedField}
@@ -3228,11 +3298,20 @@ export default function Page() {
           <button
             className={panel === "details" && panelOpen ? "active" : ""}
             aria-pressed={panel === "details" && panelOpen}
-            aria-label="Toggle details and parties panel"
+            aria-label="Toggle transaction details panel"
             onClick={() => selectPanel("details")}
           >
+            <Icon name="info" />
+            <span>Details</span>
+          </button>
+          <button
+            className={panel === "parties" && panelOpen ? "active" : ""}
+            aria-pressed={panel === "parties" && panelOpen}
+            aria-label="Toggle parties panel"
+            onClick={() => selectPanel("parties")}
+          >
             <Icon name="parties" />
-            <span>Details /<br />Parties</span>
+            <span>Parties</span>
           </button>
           <button
             className={panel === "forms" && panelOpen ? "active" : ""}
@@ -3262,7 +3341,7 @@ export default function Page() {
           onContinue={(document) => {
             setSignatureOpen(false);
             setNotice(
-              `DocuSign package prepared with ${document}. Connect the provider API to continue to recipient setup.`,
+              `Signature package prepared with ${document}. Connect the provider API to continue to recipient setup.`,
             );
           }}
         />

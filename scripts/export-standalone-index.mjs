@@ -629,7 +629,7 @@ if (context && modeButtons.length >= 2) {
     };
     recognition.start();
   });
-  // ---- Details / Parties -------------------------------------------------
+  // ---- Details and Parties panels ----------------------------------------
   // Field definitions and PDF links are generated from app/page.tsx by
   // scripts/export-standalone-index.mjs. Re-run the export after changing them.
   const OQF = {"partyFields": [{"key": "partyFirstName", "label": "First name", "value": "Vu", "prefill": true}, {"key": "partyLastName", "label": "Last name", "value": "Nguyen", "prefill": true}, {"key": "partyEmail", "label": "Email", "value": "vu.nguyen@c0x12c.com", "prefill": true, "wide": true}, {"key": "partyRole", "label": "Transaction role", "value": "Buyer Agent", "wide": true, "kind": "select", "options": "ROLES"}], "agentContactFields": [{"key": "agentPhone", "label": "Phone", "value": "(213) 555-0148", "prefill": true}, {"key": "agentLicense", "label": "DRE / NMLS #", "value": "02114477", "prefill": true}], "agentBrokerageFields": [{"key": "brokerageFirm", "label": "Brokerage firm", "value": "Pinnacle Estate Properties", "prefill": true, "wide": true}, {"key": "brokerageLicense", "label": "Brokerage DRE license #", "value": "01234567", "prefill": true}, {"key": "brokerageFax", "label": "Fax", "value": ""}, {"key": "brokerageAddress", "label": "Office address", "value": "700 S Flower St", "prefill": true, "wide": true}, {"key": "brokerageCity", "label": "City", "value": "Los Angeles", "prefill": true}, {"key": "brokerageState", "label": "State", "value": "CA", "prefill": true}, {"key": "brokerageZip", "label": "ZIP", "value": "90017", "prefill": true}], "clientContactFields": [{"key": "firstName", "label": "First name", "value": "", "prefill": true}, {"key": "lastName", "label": "Last name", "value": "", "prefill": true}, {"key": "email", "label": "Email", "value": "", "prefill": true}, {"key": "phone", "label": "Phone", "value": "", "prefill": true}, {"key": "mailingAddress", "label": "Mailing address", "value": "", "wide": true}], "buyerDetailFields": [{"key": "occupation", "label": "Occupation / employer", "value": "", "wide": true}, {"key": "financingType", "label": "Financing type", "value": "", "kind": "select", "options": ["Cash", "Conventional", "FHA", "VA", "Other"]}, {"key": "preApprovalAmount", "label": "Pre-approval amount", "value": "", "prefix": "$"}, {"key": "preferredLender", "label": "Preferred lender", "value": "", "wide": true}], "agentContactFieldsGeneric": [{"key": "firstName", "label": "First name", "value": "", "prefill": true}, {"key": "lastName", "label": "Last name", "value": "", "prefill": true}, {"key": "email", "label": "Email", "value": "", "prefill": true, "wide": true}, {"key": "phone", "label": "Phone", "value": "", "prefill": true}, {"key": "license", "label": "DRE / NMLS #", "value": "", "prefill": true}], "propertyFields": [{"key": "propertyAddress", "label": "Property address", "value": "2458 Maplewood Ave", "prefill": true, "wide": true}, {"key": "unit", "label": "Unit #", "value": "12B"}, {"key": "city", "label": "City", "value": "Los Angeles", "prefill": true}, {"key": "state", "label": "State", "value": "CA", "prefill": true}, {"key": "zip", "label": "Zip Code", "value": "90026", "prefill": true}, {"key": "county", "label": "County", "value": "Los Angeles", "prefill": true}, {"key": "propertyType", "label": "Type", "value": "Commercial", "prefill": true, "kind": "select", "options": ["Commercial", "Condominium", "Single Family", "Multi-Family", "Land"]}, {"key": "yearBuilt", "label": "Year built or manufactured", "value": "2018"}, {"key": "apn", "label": "APN", "value": "5401-021-045", "prefill": true}, {"key": "lot", "label": "Lot", "value": "12"}, {"key": "block", "label": "Block", "value": "B"}, {"key": "subdivision", "label": "Subdivision", "value": "Maplewood Heights", "wide": true}, {"key": "taxes", "label": "Taxes", "value": "6,850", "prefix": "$"}, {"key": "legalDescription", "label": "Legal Description", "value": "Unit 12B of Maplewood Heights Condominium, City of Los Angeles, County of Los Angeles, State of California", "wide": true, "kind": "textarea"}], "listingFields": [{"key": "mlsNumber", "label": "MLS Number", "value": "CA12345678"}, {"key": "listingDate", "label": "Listing Date", "value": "08/18/2026"}, {"key": "expirationDate", "label": "Expiration Date", "value": "08/31/2026"}, {"key": "listingAgreementDate", "label": "Listing Agreement Date", "value": "08/15/2026"}, {"key": "previousPrice", "label": "Previous Price", "value": "845,000", "prefix": "$"}, {"key": "listedPrice", "label": "Listed Price", "value": "825,000", "prefill": true, "prefix": "$"}, {"key": "trustDeed1", "label": "Trust Deed Balance 1", "value": "350,000", "prefix": "$"}, {"key": "trustDeed2", "label": "Trust Deed Balance 2", "value": "", "prefix": "$"}, {"key": "trustDeed3", "label": "Trust Deed Balance 3", "value": "", "prefix": "$"}, {"key": "otherLiens", "label": "Other Liens", "value": "", "prefix": "$"}, {"key": "otherLiensDescription", "label": "Other Liens (Description)", "value": "", "wide": true}, {"key": "otherEncumbrances", "label": "Other Encumbrances", "value": "", "prefix": "$"}, {"key": "otherEncumbrancesDescription", "label": "Other Encumbrances (Description)", "value": "", "wide": true}, {"key": "includes", "label": "Includes", "value": "Refrigerator, washer, dryer, kitchen appliances", "wide": true, "kind": "textarea"}, {"key": "excludes", "label": "Excludes", "value": "Seller\u2019s personal furniture and staging items", "wide": true, "kind": "textarea"}, {"key": "listingRemarks", "label": "Listing Remarks", "value": "Bright 2-bedroom condo in a desirable Los Angeles neighborhood with updated kitchen and convenient access to shopping and transit.", "wide": true, "kind": "textarea"}], "purchaseFields": [{"key": "purchasePrice", "label": "Purchase Price", "value": "820,000", "prefix": "$"}, {"key": "escrowNumber", "label": "Escrow Number", "value": "ESC-2026-0818-2458"}, {"key": "cashBalance", "label": "Cash Balance", "value": "164,000", "prefix": "$"}, {"key": "transferFees", "label": "Transfer Fees", "value": "2,500", "prefix": "$"}, {"key": "deposit1", "label": "Deposit 1", "value": "10,000", "prefix": "$"}, {"key": "deposit2", "label": "Deposit 2", "value": "15,000", "prefix": "$"}, {"key": "appraisalWaived", "label": "Appraisal Contingency Waived", "value": "", "kind": "select", "options": ["Yes", "No"]}, {"key": "loanWaived", "label": "Loan Contingency Waived", "value": "", "kind": "select", "options": ["Yes", "No"]}, {"key": "purchaseRemarks", "label": "Purchase Remarks", "value": "Buyer to obtain conventional financing. Seller to provide standard disclosures.", "wide": true, "kind": "textarea"}, {"key": "financingTerms", "label": "Other Financing Terms", "value": "80% conventional loan, 30-year fixed", "wide": true, "kind": "textarea"}], "keyDateFields": [{"key": "offerAccepted", "label": "Offer Accepted", "value": "08/18/26"}, {"key": "purchaseAgreementDate", "label": "Purchase Agreement Date", "value": "08/18/26"}, {"key": "earnestMoneyDue", "label": "Earnest Money Deposit Due", "value": "08/21/26"}, {"key": "sellerDisclosureDue", "label": "Seller Disclosure Due", "value": "08/25/26"}, {"key": "possessionDate", "label": "Possession Date", "value": "08/31/26"}, {"key": "buyerPropertyContingency", "label": "Sale of Buyer Property Contingency", "value": "08/31/26"}, {"key": "appraisalDue", "label": "Appraisal Contingency Due", "value": "09/04/26"}, {"key": "inspectionDue", "label": "Inspection Contingency Due", "value": "09/04/26"}, {"key": "loanDue", "label": "Loan Contingency Due", "value": "09/08/26"}, {"key": "closeOfEscrow", "label": "Close of Escrow", "value": "09/17/26"}], "listingCommissionFields": [{"key": "listingCommissionAmount", "label": "Listing Commission Amount", "value": "24,600", "prefix": "$"}, {"key": "listingCommissionPercent", "label": "Listing Commission Percent", "value": "3", "suffix": "%"}, {"key": "listingNetOffice", "label": "Listing Net Office Commission", "value": "22,140", "prefix": "$"}, {"key": "listingTcFee", "label": "Listing TC Fee", "value": "350", "prefix": "$"}, {"key": "listingOtherDeductions", "label": "Listing Other Deductions", "value": "2,110", "prefix": "$"}, {"key": "listingDeductionDetails", "label": "Listing Deduction Details", "value": "Brokerage split and admin fee", "wide": true}, {"key": "listingAgent1Percent", "label": "Listing Agent 1 Split Percent", "value": "70", "suffix": "%"}, {"key": "listingAgent1Amount", "label": "Listing Agent 1 Split Amount", "value": "17,220", "prefix": "$"}, {"key": "listingAgent1Net", "label": "Listing Agent 1 Net Commission", "value": "17,220", "prefix": "$"}, {"key": "listingAgent2Percent", "label": "Listing Agent 2 Split Percent", "value": "30", "suffix": "%"}, {"key": "listingAgent2Amount", "label": "Listing Agent 2 Split Amount", "value": "7,380", "prefix": "$"}, {"key": "listingAgent2Net", "label": "Listing Agent 2 Net Commission", "value": "7,380", "prefix": "$"}], "purchaseCommissionFields": [{"key": "purchaseCommissionAmount", "label": "Purchase Commission Amount", "value": "24,600", "prefix": "$"}, {"key": "purchaseCommissionPercent", "label": "Purchase Commission Percent", "value": "3", "suffix": "%"}, {"key": "purchaseNetOffice", "label": "Purchase Net Office Commission", "value": "22,140", "prefix": "$"}, {"key": "purchaseTcFee", "label": "Purchase TC Fee", "value": "350", "prefix": "$"}, {"key": "purchaseOtherDeductions", "label": "Purchase Other Deductions", "value": "2,110", "prefix": "$"}, {"key": "purchaseDeductionDetails", "label": "Purchase Deduction Details", "value": "Brokerage split and admin fee", "wide": true}, {"key": "purchaseAgent1Percent", "label": "Purchase Agent 1 Split Percent", "value": "60", "suffix": "%"}, {"key": "purchaseAgent1Amount", "label": "Purchase Agent 1 Split Amount", "value": "14,760", "prefix": "$"}, {"key": "purchaseAgent1Net", "label": "Purchase Agent 1 Net Commission", "value": "14,760", "prefix": "$"}, {"key": "purchaseAgent2Percent", "label": "Purchase Agent 2 Split Percent", "value": "40", "suffix": "%"}, {"key": "purchaseAgent2Amount", "label": "Purchase Agent 2 Split Amount", "value": "9,840", "prefix": "$"}, {"key": "purchaseAgent2Net", "label": "Purchase Agent 2 Net Commission", "value": "9,840", "prefix": "$"}], "partyRoleField": [{"key": "role", "label": "Transaction role", "value": "", "kind": "select", "options": "ROLES", "wide": true}], "ROLES": ["Buyer Agent", "Listing Agent", "Buyer 1", "Buyer 2", "Seller", "Transaction Coordinator"]};
@@ -638,13 +638,11 @@ if (context && modeButtons.length >= 2) {
   const oqOptions = (field) => (field.options === 'ROLES' ? oqRoles : field.options || []);
 
   const oqSections = [
-    { key: 'parties', label: 'Parties', title: 'Party details', sub: 'Names, contact details, and roles used across linked forms.' },
-    { key: 'property', label: 'Property', title: 'Property information', sub: 'Address, parcel, tax, and legal property details.', groups: [{ fields: OQF.propertyFields }] },
-    { key: 'listing', label: 'Listing', title: 'Listing information', sub: 'Listing dates, pricing, liens, and transaction notes.', groups: [{ fields: OQF.listingFields }] },
+    { key: 'property', label: 'Property', title: 'Property information', sub: 'Address, parcel, tax, and legal property details.', prefill: true, groups: [{ fields: OQF.propertyFields }] },
+    { key: 'listing', label: 'Listing', title: 'Listing information', sub: 'Listing dates, pricing, liens, and transaction notes.', prefill: true, groups: [{ fields: OQF.listingFields }] },
     { key: 'purchase', label: 'Purchase', title: 'Purchase information', sub: 'Offer terms, financing, contingencies, and key dates.', groups: [{ fields: OQF.purchaseFields }, { heading: 'Key dates', fields: OQF.keyDateFields }] },
-    { key: 'commission', label: 'Commission', title: 'Commission details', sub: 'Listing and purchase commission allocations.', groups: [{ heading: 'Listing commission', fields: OQF.listingCommissionFields, first: true }, { heading: 'Purchase commission', fields: OQF.purchaseCommissionFields }] }
+    { key: 'commission', label: 'Commission', title: 'Commission details', sub: 'Listing and purchase commission allocations.', groups: [{ heading: 'Listing commission', fields: OQF.listingCommissionFields }, { heading: 'Purchase commission', fields: OQF.purchaseCommissionFields }] }
   ];
-  const oqPrefillSections = ['parties', 'property', 'listing'];
 
   const oqShared = {};
   [].concat(OQF.partyFields, OQF.propertyFields, OQF.listingFields, OQF.purchaseFields,
@@ -660,30 +658,24 @@ if (context && modeButtons.length >= 2) {
     return { id: id, values: values, baseline: Object.assign({}, values) };
   };
 
-  const oqState = {
-    section: 'parties',
-    partyId: 'primary',
-    openLinks: null,
-    parties: [
-      oqMakeParty('primary', [].concat(OQF.agentContactFields, OQF.agentBrokerageFields)),
-      oqMakeParty('buyer-1', [].concat(OQF.clientContactFields, OQF.buyerDetailFields), {
-        role: 'Buyer 1', firstName: 'Alexis', lastName: 'Romero',
-        email: 'alexis.romero@example.com', phone: '(310) 555-0132'
-      }),
-      oqMakeParty('seller', OQF.clientContactFields, {
-        role: 'Seller', firstName: 'Dana', lastName: 'Whitfield',
-        email: 'dana.whitfield@example.com', phone: '(323) 555-0177'
-      }),
-      oqMakeParty('listing-agent', [].concat(OQF.agentContactFieldsGeneric, OQF.agentBrokerageFields), {
-        role: 'Listing Agent', firstName: 'Priya', lastName: 'Raman',
-        email: 'priya.raman@example.com', phone: '(818) 555-0104',
-        brokerageFirm: 'Harbor & Vine Realty'
-      })
-    ]
-  };
+  const oqParties = [
+    oqMakeParty('primary', [].concat(OQF.agentContactFields, OQF.agentBrokerageFields)),
+    oqMakeParty('buyer-1', [].concat(OQF.clientContactFields, OQF.buyerDetailFields), {
+      role: 'Buyer 1', firstName: 'Alexis', lastName: 'Romero',
+      email: 'alexis.romero@example.com', phone: '(310) 555-0132'
+    }),
+    oqMakeParty('seller', OQF.clientContactFields, {
+      role: 'Seller', firstName: 'Dana', lastName: 'Whitfield',
+      email: 'dana.whitfield@example.com', phone: '(323) 555-0177'
+    }),
+    oqMakeParty('listing-agent', [].concat(OQF.agentContactFieldsGeneric, OQF.agentBrokerageFields), {
+      role: 'Listing Agent', firstName: 'Priya', lastName: 'Raman',
+      email: 'priya.raman@example.com', phone: '(818) 555-0104',
+      brokerageFirm: 'Harbor & Vine Realty'
+    })
+  ];
 
-  const oqActiveParty = () =>
-    oqState.parties.filter((party) => party.id === oqState.partyId)[0] || oqState.parties[0];
+  const oqState = { section: 'property', openPartyId: null, openLinks: null, collapsedGroups: [] };
 
   const oqPartyDisplay = (party) => {
     const name = party.id === 'primary'
@@ -697,8 +689,23 @@ if (context && modeButtons.length >= 2) {
 
   const oqIsAgentRole = (role) => /agent|coordinator/i.test(role || '');
 
-  // The field set follows the party's role, so the pane never shows more than a
-  // dozen inputs even though the transaction carries six party records.
+  // Roles group by side of the deal, not by exact title — otherwise a
+  // four-party transaction becomes four groups of one.
+  const oqPartyGroupOf = (role) => {
+    if (oqIsAgentRole(role)) return 'agents';
+    if (/buyer/i.test(role || '')) return 'buyers';
+    if (/seller/i.test(role || '')) return 'sellers';
+    return 'other';
+  };
+  const oqPartyGroupOrder = [
+    { key: 'buyers', label: 'Buyers' },
+    { key: 'sellers', label: 'Sellers' },
+    { key: 'agents', label: 'Agents' },
+    { key: 'other', label: 'Other' }
+  ];
+
+  // The field set follows the party's role, so the panel never shows more than
+  // a dozen inputs even though the transaction carries six party records.
   const oqPartyGroups = (party) => {
     if (party.id === 'primary') {
       return [
@@ -729,32 +736,7 @@ if (context && modeButtons.length >= 2) {
   };
   const OQ_CLOSE_ICON = '<svg class="fe-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 5l14 14M19 5L5 19"></path></svg>';
   const OQ_PLUS_ICON = '<svg class="fe-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14M5 12h14"></path></svg>';
-
-  const oqStore = () => {
-    const party = oqActiveParty();
-    if (oqState.section !== 'parties') {
-      return {
-        values: oqShared,
-        baseline: oqSharedBaseline,
-        set: (key, value) => { oqShared[key] = value; }
-      };
-    }
-    if (party.id === 'primary') {
-      return {
-        values: Object.assign({}, party.values, oqShared),
-        baseline: party.baseline,
-        set: (key, value) => {
-          if (oqSharedPartyKeys.indexOf(key) !== -1) oqShared[key] = value;
-          else party.values[key] = value;
-        }
-      };
-    }
-    return {
-      values: party.values,
-      baseline: party.baseline,
-      set: (key, value) => { party.values[key] = value; }
-    };
-  };
+  const OQ_CHEVRON_ICON = '<svg class="fe-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M7 9l5 5 5-5"></path></svg>';
 
   // A field reads as pre-filled while it still holds the value Create
   // Transaction supplied; editing it clears the marker.
@@ -766,15 +748,14 @@ if (context && modeButtons.length >= 2) {
     return Boolean(seeded) && store.values[field.key] === seeded;
   };
 
-  const oqRenderField = (field, store) => {
+  const oqRenderField = (field, store, rerender) => {
     const wrap = oqEl('div', 'oq-edit-field' + (field.wide ? ' wide' : '') + (oqPrefilled(field, store) ? ' is-prefilled' : ''));
-    const id = 'detail-field-' + field.key;
+    const id = 'detail-field-' + store.scope + '-' + field.key;
     const label = oqEl('label', 'oq-edit-label', field.label);
     label.setAttribute('for', id);
     wrap.appendChild(label);
 
-    const isExtraParty = oqState.section === 'parties' && oqActiveParty().id !== 'primary';
-    const dests = isExtraParty ? [] : oqDestinations(field.key);
+    const dests = store.linked ? oqDestinations(field.key) : [];
     const control = oqEl('div', 'oq-edit-control' + (dests.length ? ' is-linked' : ''));
     if (field.prefix) control.appendChild(oqEl('i', null, field.prefix));
 
@@ -800,8 +781,8 @@ if (context && modeButtons.length >= 2) {
     input.value = store.values[field.key] || '';
     input.addEventListener('input', (event) => {
       store.set(field.key, event.target.value);
-      if (field.key === 'role' || field.key === 'partyRole') oqRenderDetails();
-      else wrap.classList.toggle('is-prefilled', oqPrefilled(field, oqStore()));
+      if (field.key === 'role' || field.key === 'partyRole') rerender();
+      else wrap.classList.toggle('is-prefilled', oqPrefilled(field, store));
     });
     control.appendChild(input);
     if (field.suffix) control.appendChild(oqEl('i', null, field.suffix));
@@ -826,7 +807,7 @@ if (context && modeButtons.length >= 2) {
         more.addEventListener('click', (event) => {
           event.stopPropagation();
           oqState.openLinks = oqState.openLinks === field.key ? null : field.key;
-          oqRenderDetails();
+          rerender();
         });
         line.appendChild(more);
       }
@@ -843,7 +824,7 @@ if (context && modeButtons.length >= 2) {
         close.type = 'button';
         close.setAttribute('aria-label', 'Close linked fields');
         close.innerHTML = OQ_CLOSE_ICON;
-        close.addEventListener('click', () => { oqState.openLinks = null; oqRenderDetails(); });
+        close.addEventListener('click', () => { oqState.openLinks = null; rerender(); });
         head.appendChild(close);
         pop.appendChild(head);
         const list = document.createElement('ul');
@@ -856,7 +837,7 @@ if (context && modeButtons.length >= 2) {
           button.appendChild(oqEl('small', null, 'p.' + dest.page));
           button.addEventListener('click', () => {
             oqState.openLinks = null;
-            oqRenderDetails();
+            rerender();
             showNotice('Opens ' + dest.label + ' in ' + dest.form + ', page ' + dest.page + '.');
           });
           item.appendChild(button);
@@ -869,142 +850,220 @@ if (context && modeButtons.length >= 2) {
     return wrap;
   };
 
-  const oqRenderGroups = (groups, store) => {
+  const oqRenderGroups = (groups, store, rerender) => {
     const frag = document.createDocumentFragment();
     groups.forEach((group, index) => {
       const box = oqEl('div');
       if (group.heading) {
-        box.appendChild(oqEl('h5', 'oq-form-subheading' + (index === 0 || group.first ? ' first' : ''), group.heading));
+        box.appendChild(oqEl('h5', 'oq-form-subheading' + (index === 0 ? ' first' : ''), group.heading));
       }
       const grid = oqEl('div', 'oq-edit-grid');
-      group.fields.forEach((field) => grid.appendChild(oqRenderField(field, store)));
+      group.fields.forEach((field) => grid.appendChild(oqRenderField(field, store, rerender)));
       box.appendChild(grid);
       frag.appendChild(box);
     });
     return frag;
   };
 
+  const oqLegend = () => {
+    const legend = oqEl('span', 'oq-prefill-legend');
+    legend.appendChild(oqEl('i'));
+    legend.appendChild(document.createTextNode('Marked fields came from Create Transaction'));
+    return legend;
+  };
+
+  const oqCloseButton = (label) => {
+    const button = oqEl('button', 'oq-panel-close');
+    button.type = 'button';
+    button.setAttribute('aria-label', label);
+    button.innerHTML = OQ_CLOSE_ICON;
+    return button;
+  };
+
+  // ---- Parties panel: roster, then one party at a time --------------------
+  const partiesBody = document.createElement('div');
+  partiesBody.className = 'oq-parties-panel';
+  partiesBody.style.display = 'none';
+
+  function oqRenderParties() {
+    partiesBody.innerHTML = '';
+    const openParty = oqParties.filter((party) => party.id === oqState.openPartyId)[0] || null;
+    const bar = oqEl('div', 'oq-panel-bar oq-panel-heading');
+
+    if (!openParty) {
+      bar.appendChild(oqEl('h2', null, 'Parties'));
+      const add = oqEl('button', 'oq-add-party');
+      add.type = 'button';
+      add.innerHTML = OQ_PLUS_ICON + 'Add party';
+      add.addEventListener('click', () => showPartyModal());
+      bar.appendChild(add);
+      bar.appendChild(oqCloseButton('Close parties panel'));
+      partiesBody.appendChild(bar);
+
+      const list = oqEl('div', 'oq-party-list');
+      oqPartyGroupOrder.forEach((group) => {
+        const members = oqParties.filter(
+          (party) => oqPartyGroupOf(oqPartyDisplay(party).role) === group.key
+        );
+        if (!members.length) return;
+        const collapsed = oqState.collapsedGroups.indexOf(group.key) !== -1;
+        const section = oqEl('section', 'oq-party-group' + (collapsed ? ' is-collapsed' : ''));
+        const heading = oqEl('h3');
+        const toggle = oqEl('button');
+        toggle.type = 'button';
+        toggle.setAttribute('aria-expanded', String(!collapsed));
+        toggle.innerHTML = OQ_CHEVRON_ICON;
+        toggle.appendChild(document.createTextNode(group.label));
+        toggle.appendChild(oqEl('small', null, String(members.length)));
+        toggle.addEventListener('click', () => {
+          oqState.collapsedGroups = collapsed
+            ? oqState.collapsedGroups.filter((key) => key !== group.key)
+            : oqState.collapsedGroups.concat([group.key]);
+          oqRenderParties();
+        });
+        heading.appendChild(toggle);
+        section.appendChild(heading);
+        if (collapsed) { list.appendChild(section); return; }
+        members.forEach((party) => {
+          const info = oqPartyDisplay(party);
+          const card = oqEl('button', 'oq-party-summary');
+          card.type = 'button';
+          card.appendChild(oqEl('span', 'oq-party-avatar', info.initials));
+          const copy = oqEl('span');
+          copy.appendChild(oqEl('b', null, info.name));
+          copy.appendChild(oqEl('small', null, info.role));
+          card.appendChild(copy);
+          const chevron = document.createElement('span');
+          chevron.innerHTML = OQ_CHEVRON_ICON;
+          card.appendChild(chevron.firstChild);
+          card.addEventListener('click', () => {
+            oqState.openPartyId = party.id;
+            oqState.openLinks = null;
+            oqRenderParties();
+            partiesBody.scrollTop = 0;
+          });
+          section.appendChild(card);
+        });
+        list.appendChild(section);
+      });
+      partiesBody.appendChild(list);
+      return;
+    }
+
+    const back = oqEl('button', 'oq-panel-back');
+    back.type = 'button';
+    back.innerHTML = OQ_CHEVRON_ICON;
+    back.appendChild(document.createTextNode('Parties'));
+    back.addEventListener('click', () => {
+      oqState.openPartyId = null;
+      oqState.openLinks = null;
+      oqRenderParties();
+      partiesBody.scrollTop = 0;
+    });
+    bar.appendChild(back);
+    bar.appendChild(oqCloseButton('Close parties panel'));
+    partiesBody.appendChild(bar);
+
+    const info = oqPartyDisplay(openParty);
+    const store = {
+      scope: openParty.id,
+      linked: openParty.id === 'primary',
+      values: openParty.id === 'primary'
+        ? Object.assign({}, openParty.values, oqShared)
+        : openParty.values,
+      baseline: openParty.baseline,
+      set: (key, value) => {
+        if (openParty.id === 'primary' && oqSharedPartyKeys.indexOf(key) !== -1) oqShared[key] = value;
+        else openParty.values[key] = value;
+      }
+    };
+
+    const body = oqEl('div', 'oq-panel-body');
+    const intro = oqEl('header', 'oq-panel-intro');
+    intro.appendChild(oqEl('h3', null, info.name));
+    intro.appendChild(oqEl('p', null, info.role));
+    intro.appendChild(oqLegend());
+    body.appendChild(intro);
+    body.appendChild(oqRenderGroups(oqPartyGroups(openParty), store, oqRenderParties));
+    partiesBody.appendChild(body);
+  }
+
+  // ---- Details panel: one section at a time -------------------------------
   const detailsBody = document.createElement('div');
-  detailsBody.className = 'oq-details-parties';
+  detailsBody.className = 'oq-details-panel';
   detailsBody.style.display = 'none';
-  detailsBody.innerHTML =
-    '<div class="oq-details-heading oq-panel-heading"><span><h2>Details &amp; parties</h2></span>' +
-      '<button class="oq-panel-close" type="button" aria-label="Close details panel">' + OQ_CLOSE_ICON + '</button></div>' +
-    '<div class="oq-details-workspace">' +
-      '<aside class="oq-details-sidebar" aria-label="Transaction overview">' +
-        '<section class="oq-participant-overview" aria-labelledby="oq-roster-title">' +
-          '<header><h3 id="oq-roster-title">Parties</h3>' +
-          '<button class="oq-add-party" type="button">' + OQ_PLUS_ICON + 'Add party</button></header>' +
-          '<div class="oq-party-list"></div>' +
-        '</section>' +
-        '<nav class="oq-detail-menu" aria-label="Transaction detail sections"></nav>' +
-      '</aside>' +
-      '<section class="oq-detail-form-pane" role="region" aria-live="polite">' +
-        '<header><h3></h3><p></p>' +
-        '<span class="oq-prefill-legend" hidden><i aria-hidden="true"></i>Marked fields came from Create Transaction</span>' +
-        '</header>' +
-        '<div class="oq-detail-form-body"></div>' +
-      '</section>' +
-    '</div>';
-
-  const oqRosterNode = detailsBody.querySelector('.oq-party-list');
-  const oqNavNode = detailsBody.querySelector('.oq-detail-menu');
-  const oqPaneNode = detailsBody.querySelector('.oq-detail-form-pane');
-  const oqPaneTitle = oqPaneNode.querySelector('h3');
-  const oqPaneSub = oqPaneNode.querySelector('p');
-  const oqPaneLegend = oqPaneNode.querySelector('.oq-prefill-legend');
-  const oqBodyNode = detailsBody.querySelector('.oq-detail-form-body');
-
-  detailsBody.querySelector('.oq-add-party').addEventListener('click', () => showPartyModal());
 
   function oqRenderDetails() {
-    const section = oqSections.filter((item) => item.key === oqState.section)[0];
-    const store = oqStore();
-    const party = oqActiveParty();
+    detailsBody.innerHTML = '';
+    const section = oqSections.filter((item) => item.key === oqState.section)[0] || oqSections[0];
 
-    oqRosterNode.innerHTML = '';
-    oqState.parties.forEach((entry) => {
-      const info = oqPartyDisplay(entry);
-      const active = oqState.section === 'parties' && entry.id === oqState.partyId;
-      const card = oqEl('button', 'oq-party-summary' + (active ? ' active' : ''));
-      card.type = 'button';
-      card.setAttribute('aria-pressed', String(active));
-      card.appendChild(oqEl('span', 'oq-party-avatar', info.initials));
-      const copy = oqEl('span');
-      copy.appendChild(oqEl('b', null, info.name));
-      copy.appendChild(oqEl('small', null, info.role));
-      card.appendChild(copy);
-      card.addEventListener('click', () => {
-        oqState.partyId = entry.id;
-        oqState.section = 'parties';
-        oqState.openLinks = null;
-        oqRenderDetails();
-        oqPaneNode.scrollTop = 0;
-      });
-      oqRosterNode.appendChild(card);
-    });
+    const bar = oqEl('div', 'oq-panel-bar oq-panel-heading');
+    bar.appendChild(oqEl('h2', null, 'Details'));
+    bar.appendChild(oqCloseButton('Close details panel'));
+    detailsBody.appendChild(bar);
 
-    oqNavNode.innerHTML = '';
+    const tabs = oqEl('nav', 'oq-section-tabs');
+    tabs.setAttribute('aria-label', 'Transaction detail sections');
     oqSections.forEach((item) => {
-      const button = oqEl('button', null);
+      const button = oqEl('button', null, item.label);
       button.type = 'button';
       button.setAttribute('aria-pressed', String(oqState.section === item.key));
-      button.appendChild(oqEl('span', null, item.label));
       button.addEventListener('click', () => {
         oqState.section = item.key;
         oqState.openLinks = null;
         oqRenderDetails();
-        oqPaneNode.scrollTop = 0;
+        detailsBody.scrollTop = 0;
       });
-      oqNavNode.appendChild(button);
+      tabs.appendChild(button);
     });
+    detailsBody.appendChild(tabs);
 
-    const info = oqPartyDisplay(party);
-    oqPaneTitle.textContent = oqState.section === 'parties' ? info.name : section.title;
-    oqPaneSub.textContent = oqState.section === 'parties' ? info.role : section.sub;
-    oqPaneLegend.hidden = oqPrefillSections.indexOf(oqState.section) === -1;
-
-    oqBodyNode.innerHTML = '';
-    oqBodyNode.appendChild(oqRenderGroups(
-      oqState.section === 'parties' ? oqPartyGroups(party) : section.groups,
-      store
-    ));
+    const store = {
+      scope: 'transaction',
+      linked: true,
+      values: oqShared,
+      baseline: oqSharedBaseline,
+      set: (key, value) => { oqShared[key] = value; }
+    };
+    const body = oqEl('div', 'oq-panel-body');
+    const intro = oqEl('header', 'oq-panel-intro');
+    intro.appendChild(oqEl('h3', null, section.title));
+    intro.appendChild(oqEl('p', null, section.sub));
+    if (section.prefill) intro.appendChild(oqLegend());
+    body.appendChild(intro);
+    body.appendChild(oqRenderGroups(section.groups, store, oqRenderDetails));
+    detailsBody.appendChild(body);
   }
 
   document.addEventListener('mousedown', (event) => {
     if (!oqState.openLinks) return;
     if (event.target.closest('.oq-destination-pop, .oq-destination-toggle')) return;
     oqState.openLinks = null;
+    oqRenderParties();
     oqRenderDetails();
   });
   document.addEventListener('keydown', (event) => {
     if (event.key === 'Escape' && oqState.openLinks) {
       oqState.openLinks = null;
+      oqRenderParties();
       oqRenderDetails();
     }
   });
 
+  oqRenderParties();
   oqRenderDetails();
+  context.appendChild(partiesBody);
   context.appendChild(detailsBody);
-  // Rail order matches the app: 0 = Details / Parties, 1 = Docs, 2 = Assistant.
+  // Rail order matches the app: 0 = Details, 1 = Parties, 2 = Docs, 3 = Assistant.
   const switchMode = (mode) => {
     modeButtons.forEach((button, index) => button.classList.toggle('active', index === mode));
-    // The details pane gets a wider context column, same as the app.
-    document.querySelector('.oq-editor').classList.toggle('oq-details-active', mode === 0);
-    if (mode === 1) {
+    detailsBody.style.display = mode === 0 ? '' : 'none';
+    partiesBody.style.display = mode === 1 ? '' : 'none';
+    docsBody.style.display = mode === 2 ? '' : 'none';
+    assistantBody.style.display = mode === 3 ? '' : 'none';
+    if (mode !== 3) {
       context.querySelector('header')?.remove();
       context.classList.add('oq-context-headless');
-      docsBody.style.display = '';
-      assistantBody.style.display = 'none';
-      detailsBody.style.display = 'none';
-      return;
-    }
-    if (mode === 0) {
-      context.querySelector('header')?.remove();
-      context.classList.add('oq-context-headless');
-      docsBody.style.display = 'none';
-      assistantBody.style.display = 'none';
-      detailsBody.style.display = '';
       return;
     }
     context.classList.remove('oq-context-headless');
@@ -1015,13 +1074,8 @@ if (context && modeButtons.length >= 2) {
     }
     header.className = 'oq-panel-heading';
     header.innerHTML = '<h2>Assistant</h2><button class="oq-panel-close" aria-label="Close panel">×</button>';
-    docsBody.style.display = 'none';
-    assistantBody.style.display = '';
-    detailsBody.style.display = 'none';
   };
-  modeButtons[0].addEventListener('click', () => switchMode(0));
-  modeButtons[1].addEventListener('click', () => switchMode(1));
-  modeButtons[2]?.addEventListener('click', () => switchMode(2));
+  modeButtons.forEach((button, index) => button.addEventListener('click', () => switchMode(index)));
   modeButtons.forEach((button) => button.addEventListener('click', () => {
     context.style.display = '';
     document.querySelector('.oq-editor').classList.remove('oq-panel-collapsed');

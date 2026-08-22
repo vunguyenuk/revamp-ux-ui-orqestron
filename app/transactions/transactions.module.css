@@ -73,7 +73,7 @@
   min-width: 0;
   overflow: hidden;
   font-size: var(--text-xl);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw);
   letter-spacing: -0.02em;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -121,7 +121,7 @@
 
 .organization b {
   font-size: var(--text-md);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw);
 }
 
 .organization small {
@@ -177,7 +177,7 @@
 
 .navItem b {
   font-size: var(--text-sm);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw);
 }
 
 .navItem:hover {
@@ -210,7 +210,7 @@
   background: oklch(91% 0.045 32);
   color: oklch(41% 0.075 35);
   font-size: var(--text-2xs);
-  font-weight: var(--fw-bold);
+  font-weight: var(--fw);
 }
 
 .accountCopy {
@@ -219,7 +219,7 @@
 
 .accountCopy b {
   font-size: var(--text-sm);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw);
 }
 
 .accountCopy small {
@@ -276,7 +276,7 @@
   margin: 0;
   font-family: "Iowan Old Style", Charter, Georgia, "Times New Roman", serif;
   font-size: var(--text-2xl);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw);
   letter-spacing: -0.01em;
   line-height: 1.2;
 }
@@ -303,7 +303,7 @@
   border-radius: 9px;
   background: var(--accent);
   color: oklch(99% 0.004 80);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw);
   box-shadow: 0 1px 2px oklch(38% 0.04 42 / 0.16);
 }
 
@@ -352,7 +352,7 @@
 
 .columnHeader b {
   font-size: var(--text-sm);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw);
 }
 
 .columnHeader > span {
@@ -398,7 +398,7 @@
 
 .transactionName {
   font-size: var(--text-lg);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw);
   line-height: 1.15;
 }
 
@@ -457,7 +457,7 @@
 
 .cardFooter strong {
   color: oklch(42% 0.075 43);
-  font-weight: var(--fw-medium);
+  font-weight: var(--fw);
 }
 
 .addTransaction {
