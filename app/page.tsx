@@ -2,7 +2,14 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   pdfFieldsByDocument,
   type PdfFieldDefinition,
@@ -454,6 +461,9 @@ const documentPages: DocumentPage[] = [
 const pageKey = (page: { label: string; page: number }) =>
   `${page.label}-${page.page}`;
 
+/** Keep decoded full-page bitmaps bounded even when a transaction has many forms. */
+const PDF_PAGE_MOUNT_RADIUS = 1;
+
 function PartyModal({ onClose }: { onClose: () => void }) {
   return (
     <div className="oq-party-backdrop" role="presentation">
@@ -857,34 +867,83 @@ function PdfFieldPopover({
   field: PdfFieldDefinition;
   value: string;
   onClose: () => void;
-  onSave: (value: string) => void;
+  onSave: (value: string, scope: "field" | "everywhere") => void;
 }) {
   const [draft, setDraft] = useState(value);
+  const [step, setStep] = useState<"edit" | "choose">("edit");
+  const popoverRef = useRef<HTMLFormElement | null>(null);
   const normalizedDraft = draft.trim();
   const normalizedValue = value.trim();
   const canApply =
     normalizedDraft !== normalizedValue &&
     (normalizedDraft.length > 0 || normalizedValue.length > 0);
   const suggestions = suggestionsForPdfField(field);
+  const { siblings } = siblingLinksForPdfField(documentCode, field.id);
+  const siblingForms = [...new Set(siblings.map((link) => link.form))];
+  const linkedForms = [
+    ...new Set([documentCode, ...siblings.map((link) => link.form)]),
+  ];
   const placeAbove = field.top > 68;
   const anchoredStyle: React.CSSProperties = {
     top: `${placeAbove ? field.top : field.top + field.height}%`,
     transform: placeAbove
-      ? "translateY(calc(-100% - 8px))"
-      : "translateY(8px)",
+      ? "translateY(calc(-100% - 8px)) translateY(var(--oq-popover-nudge, 0px))"
+      : "translateY(8px) translateY(var(--oq-popover-nudge, 0px))",
     ...(field.left > 48 ? { right: "2%" } : { left: `${Math.max(2, field.left)}%` }),
   };
 
+  // The PDF canvas scrolls underneath two fixed toolbars. Keep the anchored
+  // popover inside the visible canvas instead of letting its header be clipped.
+  useLayoutEffect(() => {
+    const node = popoverRef.current;
+    const canvas = node?.closest<HTMLElement>(".fe-canvas");
+    if (!node || !canvas) return;
+
+    const keepVisible = () => {
+      node.style.setProperty("--oq-popover-nudge", "0px");
+      const popoverRect = node.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
+      const topLimit = canvasRect.top + 12;
+      const bottomLimit = canvasRect.bottom - 12;
+      const nudge =
+        popoverRect.top < topLimit
+          ? topLimit - popoverRect.top
+          : popoverRect.bottom > bottomLimit
+            ? bottomLimit - popoverRect.bottom
+            : 0;
+      node.style.setProperty("--oq-popover-nudge", `${Math.round(nudge)}px`);
+    };
+
+    const frame = window.requestAnimationFrame(keepVisible);
+    const observer = new ResizeObserver(keepVisible);
+    observer.observe(node);
+    observer.observe(canvas);
+    canvas.addEventListener("scroll", keepVisible, { passive: true });
+    window.addEventListener("resize", keepVisible);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      observer.disconnect();
+      canvas.removeEventListener("scroll", keepVisible);
+      window.removeEventListener("resize", keepVisible);
+    };
+  }, [field.id, step]);
+
   return (
     <form
+      ref={popoverRef}
       className="oq-field-popover"
       style={anchoredStyle}
       role="dialog"
-      aria-label={`Fill ${pdfFieldLabel(field)}`}
+      aria-label={
+        step === "choose"
+          ? "Choose where to apply this change"
+          : `Fill ${pdfFieldLabel(field)}`
+      }
       onClick={(event) => event.stopPropagation()}
       onSubmit={(event) => {
         event.preventDefault();
-        if (canApply) onSave(normalizedDraft);
+        if (!canApply) return;
+        setStep("choose");
       }}
       onKeyDown={(event) => {
         if (event.key === "Escape") onClose();
@@ -893,13 +952,63 @@ function PdfFieldPopover({
       <header>
         <div>
           <small>{documentCode} · PAGE {field.page}</small>
-          <h3>{pdfFieldLabel(field)}</h3>
+          <h3>
+            {step === "choose" ? "Where should this update?" : pdfFieldLabel(field)}
+          </h3>
         </div>
         <button type="button" onClick={onClose} aria-label="Close field editor">
           <Icon name="close" size={16} />
         </button>
       </header>
-      {field.kind === "signature" ? (
+      {step === "choose" ? (
+        <div className="oq-apply-scope">
+          <p className="oq-apply-diff">
+            <span>
+              <small>Now</small>
+              {normalizedValue ? (
+                <b>{displayPdfFieldValue(field, normalizedValue)}</b>
+              ) : (
+                <i>not set</i>
+              )}
+            </span>
+            <Icon name="chevron" size={14} />
+            <span>
+              <small>After</small>
+              <b>{displayPdfFieldValue(field, normalizedDraft)}</b>
+            </span>
+          </p>
+          <button
+            type="button"
+            className="oq-apply-choice"
+            autoFocus
+            onClick={() => onSave(normalizedDraft, "field")}
+          >
+            <span>
+              <b>Apply to this field</b>
+              <small>
+                Update only {documentCode}, page {field.page}
+              </small>
+            </span>
+            <Icon name="chevron" size={16} />
+          </button>
+          <button
+            type="button"
+            className="oq-apply-choice"
+            onClick={() => onSave(normalizedDraft, "everywhere")}
+          >
+            <span>
+              <b>Apply to all matching forms</b>
+              <small>
+                Update {siblings.length + 1} matching{" "}
+                {siblings.length === 0 ? "field" : "fields"} across{" "}
+                {linkedForms.length} {linkedForms.length === 1 ? "form" : "forms"}:{" "}
+                {linkedForms.join(", ")}
+              </small>
+            </span>
+            <Icon name="chevron" size={16} />
+          </button>
+        </div>
+      ) : field.kind === "signature" ? (
         <div className="oq-signature-field-editor">
           <div>
             <span>Signature</span>
@@ -936,7 +1045,7 @@ function PdfFieldPopover({
           />
         </label>
       )}
-      {suggestions.length > 0 && (
+      {step === "edit" && suggestions.length > 0 && (
         <div className="oq-field-suggestions" aria-label="Suggested values">
           <small>Linked field values</small>
           {suggestions.map((suggestion, index) => {
@@ -957,23 +1066,39 @@ function PdfFieldPopover({
           })}
         </div>
       )}
-      {field.kind === "signature" ? (
+      {step === "edit" && siblings.length > 0 && (
+        <p className="oq-linked-note">
+          <i aria-hidden="true" />
+          Feeds {siblings.length} other{" "}
+          {siblings.length === 1 ? "field" : "fields"} in{" "}
+          {siblingForms.join(", ")}
+        </p>
+      )}
+      {step === "edit" && field.kind === "signature" ? (
         <p>
           The e-sign provider collects the signature and stamps the date beside
           it; the name below is what prints on the form.
         </p>
       ) : null}
-      <footer>
-        <small>
-          {draft.length}
-          {field.kind === "text" || field.kind === "signature" ? " / 120" : ""} characters
-        </small>
-        <span>
-          <button type="button" onClick={onClose}>Cancel</button>
-          <button type="submit" className="primary" disabled={!canApply}>
-            Apply
+      <footer className={step === "choose" ? "oq-apply-footer" : undefined}>
+        {step === "choose" ? (
+          <button type="button" onClick={() => setStep("edit")}>
+            Back to edit
           </button>
-        </span>
+        ) : (
+          <>
+            <small>
+              {draft.length}
+              {field.kind === "text" || field.kind === "signature" ? " / 120" : ""} characters
+            </small>
+            <span>
+              <button type="button" onClick={onClose}>Cancel</button>
+              <button type="submit" className="primary" disabled={!canApply}>
+                Apply…
+              </button>
+            </span>
+          </>
+        )}
       </footer>
     </form>
   );
@@ -2052,6 +2177,8 @@ const purchaseCommissionFields: EditableDetailField[] = [
 
 const allEditableFields = [
   ...partyFields,
+  ...agentContactFields,
+  ...agentBrokerageFields,
   ...propertyFields,
   ...listingFields,
   ...purchaseFields,
@@ -2060,12 +2187,22 @@ const allEditableFields = [
   ...purchaseCommissionFields,
 ];
 
-const initialDetailValues = Object.fromEntries(
-  allEditableFields.map((field) => [field.key, field.value]),
-) as Record<string, string>;
+const initialDetailValues = {
+  ...Object.fromEntries(
+    allEditableFields.map((field) => [field.key, field.value]),
+  ),
+  buyer1FirstName: "Alexis",
+  buyer1LastName: "Romero",
+  buyer1Email: "alexis.romero@example.com",
+  buyer1Phone: "(310) 555-0132",
+  buyer1Role: "Buyer 1",
+} as Record<string, string>;
 
 const fullAgentName = (values: Record<string, string>) =>
   [values.partyFirstName, values.partyLastName].filter(Boolean).join(" ");
+
+const fullBuyer1Name = (values: Record<string, string>) =>
+  [values.buyer1FirstName, values.buyer1LastName].filter(Boolean).join(" ");
 
 const fullPropertyAddress = (values: Record<string, string>) =>
   [
@@ -2111,6 +2248,14 @@ const detailPdfLinks: DetailPdfLink[] = [
   },
   {
     detailKeys: ["partyFirstName", "partyLastName"],
+    form: "BRBC",
+    page: 8,
+    fieldId: "prbs_b.agent.signature",
+    label: "Buyer brokerage agent",
+    resolve: fullAgentName,
+  },
+  {
+    detailKeys: ["partyFirstName", "partyLastName"],
     form: "PRBS",
     page: 1,
     fieldId: "p2_buyer_brokerage_agent_signature_es_:signer:signature",
@@ -2125,6 +2270,113 @@ const detailPdfLinks: DetailPdfLink[] = [
     label: "Broker / agent email",
     resolve: (values) => values.partyEmail,
   },
+  {
+    detailKeys: ["agentPhone"],
+    form: "BRBC",
+    page: 7,
+    fieldId: "signatures.broker.agent.1.tel",
+    label: "Broker / agent phone",
+    resolve: (values) => values.agentPhone,
+  },
+  ...[
+    ["AD", 1, "disclosure.agent.dre_lic", "Agent DRE license"],
+    ["AD", 2, "confirmation.buyers.agent.lic", "Buyer’s agent license"],
+    ["BRBC", 1, "disclosure.agent.dre_lic", "Agent DRE license"],
+    ["BRBC", 7, "signatures.broker.agent.1.dre_lic", "Broker / agent DRE license"],
+    ["BRBC", 8, "prbs_b.agent.dre_lic", "Buyer brokerage agent DRE license"],
+    ["PRBS", 1, "p2_buyer_brokerage_agent_dre_lic", "Buyer brokerage agent DRE license"],
+  ].map(([form, page, fieldId, label]) => ({
+    detailKeys: ["agentLicense"],
+    form: form as PdfDocumentCode,
+    page: page as number,
+    fieldId: fieldId as string,
+    label: label as string,
+    resolve: (values: Record<string, string>) => values.agentLicense,
+  })),
+  ...[
+    ["AD", 2, "confirmation.buyers.broker.firm_name", "Buyer’s brokerage firm"],
+    ["BRBC", 7, "signatures.broker.firm_name", "Buyer’s brokerage firm"],
+    ["BRBC", 8, "prbs_b.brokerage.firm_name", "Buyer’s brokerage firm"],
+    ["PRBS", 1, "p2_buyer_brokerage_firm", "Buyer’s brokerage firm"],
+  ].map(([form, page, fieldId, label]) => ({
+    detailKeys: ["brokerageFirm"],
+    form: form as PdfDocumentCode,
+    page: page as number,
+    fieldId: fieldId as string,
+    label: label as string,
+    resolve: (values: Record<string, string>) => values.brokerageFirm,
+  })),
+  ...[
+    ["AD", 1, "disclosure.broker.dre_lic", "Broker DRE license"],
+    ["AD", 2, "confirmation.buyers.broker.firm_lic", "Buyer’s brokerage DRE license"],
+    ["BRBC", 1, "disclosure.broker.dre_lic", "Broker DRE license"],
+    ["BRBC", 7, "signatures.broker.firm_dre_lic", "Brokerage DRE license"],
+    ["BRBC", 8, "prbs_b.brokerage.dre_lic", "Buyer’s brokerage DRE license"],
+    ["PRBS", 1, "p2_buyer_brokerage_dre_lic", "Buyer’s brokerage DRE license"],
+  ].map(([form, page, fieldId, label]) => ({
+    detailKeys: ["brokerageLicense"],
+    form: form as PdfDocumentCode,
+    page: page as number,
+    fieldId: fieldId as string,
+    label: label as string,
+    resolve: (values: Record<string, string>) => values.brokerageLicense,
+  })),
+  ...[
+    ["brokerageAddress", "signatures.broker.address", "Brokerage address"],
+    ["brokerageCity", "signatures.broker.city", "Brokerage city"],
+    ["brokerageState", "signatures.broker.state", "Brokerage state"],
+    ["brokerageZip", "signatures.broker.zip", "Brokerage ZIP"],
+  ].map(([detailKey, fieldId, label]) => ({
+    detailKeys: [detailKey],
+    form: "BRBC" as PdfDocumentCode,
+    page: 7,
+    fieldId,
+    label,
+    resolve: (values: Record<string, string>) => values[detailKey],
+  })),
+  ...[
+    ["confirmation.role.is_broker_of_buyer", "Buyer brokerage represents Buyer"],
+    ["confirmation.role.is_buyers_agent", "Agent represents Buyer"],
+  ].map(([fieldId, label]) => ({
+    detailKeys: ["partyRole"],
+    form: "AD" as PdfDocumentCode,
+    page: 2,
+    fieldId,
+    label,
+    kind: "checkbox" as const,
+    resolve: (values: Record<string, string>) => values.partyRole === "Buyer Agent",
+  })),
+  ...[
+    ["AD", 1, "disclosure.signer.1.signature", "Buyer acknowledgement"],
+    ["AD", 3, "signatures.signer.1.signature", "Buyer confirmation"],
+    ["BRBC", 1, "disclosure.signer.1.signature", "Buyer acknowledgement"],
+    ["BRBC", 3, "agreement.buyer.name", "Buyer name"],
+    ["BRBC", 7, "signatures.buyer.1.signature", "Buyer signature"],
+    ["BRBC", 7, "signatures.buyer.1.printed_name", "Printed buyer name"],
+    ["BRBC", 8, "prbs_b.buyer.1.signature", "Buyer signature"],
+    ["BRBC", 12, "bia.buyer.1.signature", "Buyer signature"],
+    ["BRBC", 13, "ccpa.buyer.signature", "Buyer signature"],
+    ["PRBS", 1, "p2_buyer1_signature_es_:signer:signature", "Buyer signature"],
+  ].map(([form, page, fieldId, label]) => ({
+    detailKeys: ["buyer1FirstName", "buyer1LastName"],
+    form: form as PdfDocumentCode,
+    page: page as number,
+    fieldId: fieldId as string,
+    label: label as string,
+    resolve: fullBuyer1Name,
+  })),
+  ...[
+    ["AD", "disclosure.signer.1.buyer", "Signer 1 is Buyer"],
+    ["BRBC", "disclosure.signer.1.buyer", "Signer 1 is Buyer"],
+  ].map(([form, fieldId, label]) => ({
+    detailKeys: ["buyer1Role"],
+    form: form as PdfDocumentCode,
+    page: 1,
+    fieldId,
+    label,
+    kind: "checkbox" as const,
+    resolve: (values: Record<string, string>) => /buyer/i.test(values.buyer1Role),
+  })),
   {
     detailKeys: ["propertyAddress", "unit", "city", "state", "zip"],
     form: "BRBC",
@@ -2185,6 +2437,26 @@ const linkedPdfFieldDomId = (target: Pick<DetailPdfLink, "form" | "fieldId">) =>
 const isLinkedPdfField = (form: PdfDocumentCode, fieldId: string) =>
   detailPdfLinks.some((link) => link.form === form && link.fieldId === fieldId);
 
+/**
+ * Every PDF field that draws on the same transaction data as this one, itself
+ * excluded. This is the number that decides "everywhere" vs "just here", so it
+ * has to be on screen when we ask.
+ */
+function siblingLinksForPdfField(form: PdfDocumentCode, fieldId: string) {
+  const self = detailPdfLinks.find(
+    (link) => link.form === form && link.fieldId === fieldId,
+  );
+  if (!self) return { self: undefined, siblings: [] as DetailPdfLink[] };
+  const detailKeySet = new Set(self.detailKeys);
+  const siblings = detailPdfLinks.filter(
+    (link) =>
+      !(link.form === form && link.fieldId === fieldId) &&
+      link.detailKeys.length === self.detailKeys.length &&
+      link.detailKeys.every((key) => detailKeySet.has(key)),
+  );
+  return { self, siblings };
+}
+
 function linksForDetailField(key: string) {
   return detailPdfLinks.filter((link) => link.detailKeys.includes(key));
 }
@@ -2241,6 +2513,7 @@ function EditableFieldGrid({
   onChange,
   onNavigate,
   baseline,
+  linkedKeyForField,
 }: {
   fields: EditableDetailField[];
   values: Record<string, string>;
@@ -2248,6 +2521,8 @@ function EditableFieldGrid({
   onNavigate: (target: DetailPdfLink) => void;
   /** Values as they arrived from Create Transaction; defaults to each field's seed. */
   baseline?: Record<string, string>;
+  /** Party forms use compact local keys while PDF links use role-specific keys. */
+  linkedKeyForField?: (key: string) => string;
 }) {
   const [openDestinations, setOpenDestinations] = useState<string | null>(null);
 
@@ -2272,10 +2547,11 @@ function EditableFieldGrid({
   return (
     <div className="oq-edit-grid">
       {fields.map((field) => {
-        const destinations = destinationsForDetailField(field.key);
+        const linkedKey = linkedKeyForField?.(field.key) ?? field.key;
+        const destinations = destinationsForDetailField(linkedKey);
         const inputId = `detail-field-${field.key}`;
         const destinationsId = `${inputId}-destinations`;
-        const destinationsOpen = openDestinations === field.key;
+        const destinationsOpen = openDestinations === linkedKey;
         return (
           <div
             className={`oq-edit-field ${field.wide ? "wide" : ""} ${
@@ -2331,17 +2607,20 @@ function EditableFieldGrid({
                 >
                   {destinations[0].form} · p.{destinations[0].page}
                 </a>
-                {destinations.length > 1 && (
+                {destinations.length > 0 && (
                   <button
                     className="oq-destination-toggle"
                     type="button"
+                    aria-label={`Show all ${destinations.length} linked locations for ${field.label}`}
                     aria-expanded={destinationsOpen}
                     aria-controls={destinationsId}
                     onClick={() =>
-                      setOpenDestinations(destinationsOpen ? null : field.key)
+                      setOpenDestinations(destinationsOpen ? null : linkedKey)
                     }
                   >
-                    +{destinations.length - 1} more
+                    <span>More</span>
+                    <small>{destinations.length}</small>
+                    <Icon name="chevron" size={12} />
                   </button>
                 )}
               </span>
@@ -2354,8 +2633,8 @@ function EditableFieldGrid({
                 aria-label={`Linked fields for ${field.label}`}
               >
                 <header>
-                  <b>Linked fields</b>
-                  <small>{destinations.length}</small>
+                  <b>Appears in</b>
+                  <small>{destinations.length} locations</small>
                   <button
                     type="button"
                     aria-label="Close linked fields"
@@ -2376,7 +2655,7 @@ function EditableFieldGrid({
                       >
                         <em>{destination.form}</em>
                         <span>{destination.label}</span>
-                        <small>p.{destination.page}</small>
+                        <small>Page {destination.page}</small>
                       </button>
                     </li>
                   ))}
@@ -2484,6 +2763,36 @@ const makeParty = (
   return { id, values, baseline: { ...values } };
 };
 
+const initialParties: TransactionParty[] = [
+  makeParty("primary", [...agentContactFields, ...agentBrokerageFields]),
+  makeParty("buyer-1", [...clientContactFields, ...buyerDetailFields], {
+    role: "Buyer 1",
+    firstName: "Alexis",
+    lastName: "Romero",
+    email: "alexis.romero@example.com",
+    phone: "(310) 555-0132",
+  }),
+  makeParty("seller", clientContactFields, {
+    role: "Seller",
+    firstName: "Dana",
+    lastName: "Whitfield",
+    email: "dana.whitfield@example.com",
+    phone: "(323) 555-0177",
+  }),
+  makeParty(
+    "listing-agent",
+    [...agentContactFieldsGeneric, ...agentBrokerageFields],
+    {
+      role: "Listing Agent",
+      firstName: "Priya",
+      lastName: "Raman",
+      email: "priya.raman@example.com",
+      phone: "(818) 555-0104",
+      brokerageFirm: "Harbor & Vine Realty",
+    },
+  ),
+];
+
 const isAgentRole = (role: string) => /agent|coordinator/i.test(role);
 
 /** Roles group by side of the deal, not by exact title — otherwise a four-party
@@ -2554,62 +2863,87 @@ const partyDisplay = (
 
 const PREFILL_SECTIONS = new Set<DetailSectionKey>(["property", "listing"]);
 
+const primaryPartyDetailKeys = new Set(
+  [...partyFields, ...agentContactFields, ...agentBrokerageFields].map(
+    (field) => field.key,
+  ),
+);
+
+const buyer1DetailKeys: Record<string, string> = {
+  firstName: "buyer1FirstName",
+  lastName: "buyer1LastName",
+  email: "buyer1Email",
+  phone: "buyer1Phone",
+  role: "buyer1Role",
+};
+
+const detailKeyForPartyField = (partyId: string, fieldKey: string) => {
+  if (partyId === "primary" && primaryPartyDetailKeys.has(fieldKey)) {
+    return fieldKey;
+  }
+  if (partyId === "buyer-1") return buyer1DetailKeys[fieldKey];
+  return undefined;
+};
+
 function PartiesPanel({
   onAddParty,
+  parties,
+  onPartiesChange,
   values,
   onChange,
   onNavigate,
   onClose,
 }: {
   onAddParty: () => void;
+  parties: TransactionParty[];
+  onPartiesChange: React.Dispatch<React.SetStateAction<TransactionParty[]>>;
   values: Record<string, string>;
   onChange: (key: string, value: string) => void;
   onNavigate: (target: DetailPdfLink) => void;
   onClose: () => void;
 }) {
-  const [parties, setParties] = useState<TransactionParty[]>(() => [
-    makeParty("primary", [...agentContactFields, ...agentBrokerageFields]),
-    makeParty("buyer-1", [...clientContactFields, ...buyerDetailFields], {
-      role: "Buyer 1",
-      firstName: "Alexis",
-      lastName: "Romero",
-      email: "alexis.romero@example.com",
-      phone: "(310) 555-0132",
-    }),
-    makeParty("seller", clientContactFields, {
-      role: "Seller",
-      firstName: "Dana",
-      lastName: "Whitfield",
-      email: "dana.whitfield@example.com",
-      phone: "(323) 555-0177",
-    }),
-    makeParty(
-      "listing-agent",
-      [...agentContactFieldsGeneric, ...agentBrokerageFields],
-      {
-        role: "Listing Agent",
-        firstName: "Priya",
-        lastName: "Raman",
-        email: "priya.raman@example.com",
-        phone: "(818) 555-0104",
-        brokerageFirm: "Harbor & Vine Realty",
-      },
-    ),
-  ]);
   // null = the roster. The panel is only as wide as the Docs panel, so one
   // party's fields get the full width instead of sharing it with a sidebar.
   const [openPartyId, setOpenPartyId] = useState<string | null>(null);
   const [collapsedGroups, setCollapsedGroups] = useState<string[]>([]);
+  const [partyDrafts, setPartyDrafts] = useState<
+    Record<string, Record<string, string>>
+  >({});
   const paneRef = useRef<HTMLDivElement | null>(null);
 
   const openParty = parties.find((party) => party.id === openPartyId) ?? null;
-  const sharedPartyKeys = new Set(partyFields.map((field) => field.key));
+  const sourcePartyValues = openParty
+    ? {
+        ...openParty.values,
+        ...Object.fromEntries(
+          partyFormGroups(openParty)
+            .flatMap((group) => group.fields)
+            .flatMap((field) => {
+              const detailKey = detailKeyForPartyField(openParty.id, field.key);
+              return detailKey && values[detailKey] !== undefined
+                ? [[field.key, values[detailKey]]]
+                : [];
+            }),
+        ),
+      }
+    : {};
+  const openPartyDraft = openParty ? (partyDrafts[openParty.id] ?? {}) : {};
+  const partyValues = { ...sourcePartyValues, ...openPartyDraft };
+  const changedKeys = Object.keys(openPartyDraft).filter(
+    (key) => openPartyDraft[key] !== sourcePartyValues[key],
+  );
+  const hasChanges = changedKeys.length > 0;
 
   const showParty = (id: string | null) => {
     setOpenPartyId(id);
     requestAnimationFrame(() => {
       paneRef.current?.scrollTo({ top: 0, behavior: "auto" });
     });
+  };
+
+  const closePanel = () => {
+    setPartyDrafts({});
+    onClose();
   };
 
   if (!openParty) {
@@ -2624,7 +2958,7 @@ function PartiesPanel({
           <button
             className="oq-panel-close"
             aria-label="Close parties panel"
-            onClick={onClose}
+            onClick={closePanel}
           >
             <Icon name="close" />
           </button>
@@ -2686,27 +3020,58 @@ function PartiesPanel({
     );
   }
 
-  const info = partyDisplay(openParty, values);
-  const partyValues =
-    openParty.id === "primary"
-      ? { ...openParty.values, ...values }
-      : openParty.values;
+  const effectiveParty = { ...openParty, values: partyValues };
+  const info = partyDisplay(
+    effectiveParty,
+    openParty.id === "primary" ? partyValues : values,
+  );
   const handlePartyChange = (key: string, value: string) => {
-    if (openParty.id === "primary" && sharedPartyKeys.has(key)) {
-      onChange(key, value);
-      return;
-    }
-    setParties((current) =>
+    setPartyDrafts((current) => {
+      const nextPartyDraft = { ...(current[openParty.id] ?? {}) };
+      if (value === sourcePartyValues[key]) delete nextPartyDraft[key];
+      else nextPartyDraft[key] = value;
+
+      const nextDrafts = { ...current };
+      if (Object.keys(nextPartyDraft).length === 0) {
+        delete nextDrafts[openParty.id];
+      } else {
+        nextDrafts[openParty.id] = nextPartyDraft;
+      }
+      return nextDrafts;
+    });
+  };
+  const discardPartyChanges = () => {
+    setPartyDrafts((current) => {
+      const next = { ...current };
+      delete next[openParty.id];
+      return next;
+    });
+  };
+  const savePartyChanges = () => {
+    changedKeys.forEach((key) => {
+      const detailKey = detailKeyForPartyField(openParty.id, key);
+      if (detailKey) onChange(detailKey, openPartyDraft[key]);
+    });
+    onPartiesChange((current) =>
       current.map((party) =>
         party.id === openParty.id
-          ? { ...party, values: { ...party.values, [key]: value } }
+          ? {
+              ...party,
+              values: {
+                ...party.values,
+                ...Object.fromEntries(
+                  changedKeys.map((key) => [key, openPartyDraft[key]]),
+                ),
+              },
+            }
           : party,
       ),
     );
+    discardPartyChanges();
   };
 
   return (
-    <div className="oq-parties-panel" ref={paneRef}>
+    <div className="oq-parties-panel is-editing" ref={paneRef}>
       <div className="oq-panel-bar oq-panel-heading">
         <button
           className="oq-panel-back"
@@ -2719,7 +3084,7 @@ function PartiesPanel({
         <button
           className="oq-panel-close"
           aria-label="Close parties panel"
-          onClick={onClose}
+          onClick={closePanel}
         >
           <Icon name="close" />
         </button>
@@ -2733,7 +3098,7 @@ function PartiesPanel({
             Marked fields came from Create Transaction
           </span>
         </header>
-        {partyFormGroups(openParty).map((group, index) => (
+        {partyFormGroups(effectiveParty).map((group, index) => (
           <div key={group.heading ?? `group-${index}`}>
             {group.heading && (
               <h5 className={`oq-form-subheading ${index === 0 ? "first" : ""}`}>
@@ -2746,10 +3111,37 @@ function PartiesPanel({
               onChange={handlePartyChange}
               onNavigate={onNavigate}
               baseline={openParty.baseline}
+              linkedKeyForField={(key) =>
+                detailKeyForPartyField(openParty.id, key) ?? key
+              }
             />
           </div>
         ))}
       </div>
+      <footer className="oq-panel-savebar">
+        <span aria-live="polite">
+          {hasChanges
+            ? `${changedKeys.length} unsaved ${changedKeys.length === 1 ? "change" : "changes"}`
+            : "All changes saved"}
+        </span>
+        <div>
+          <button
+            type="button"
+            disabled={!hasChanges}
+            onClick={discardPartyChanges}
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            className="primary"
+            disabled={!hasChanges}
+            onClick={savePartyChanges}
+          >
+            Save changes
+          </button>
+        </div>
+      </footer>
     </div>
   );
 }
@@ -2769,7 +3161,33 @@ function DetailsPanel({
 }) {
   const [activeSection, setActiveSection] =
     useState<DetailSectionKey>("property");
-  const paneRef = useRef<HTMLDivElement | null>(null);
+  const [draftValues, setDraftValues] = useState<Record<string, string>>({});
+  const effectiveValues = useMemo(
+    () => ({ ...values, ...draftValues }),
+    [draftValues, values],
+  );
+  const changedKeys = useMemo(
+    () =>
+      Object.keys(draftValues).filter(
+        (key) => draftValues[key] !== values[key],
+      ),
+    [draftValues, values],
+  );
+  const hasChanges = changedKeys.length > 0;
+  const handleChange = (key: string, value: string) => {
+    setDraftValues((current) => {
+      const next = { ...current };
+      if (value === values[key]) delete next[key];
+      else next[key] = value;
+      return next;
+    });
+  };
+  const saveChanges = () => {
+    changedKeys.forEach((key) => onChange(key, draftValues[key]));
+    setDraftValues({});
+  };
+  const discardChanges = () => setDraftValues({});
+  const bodyRef = useRef<HTMLDivElement | null>(null);
   const sections: Array<{
     key: DetailSectionKey;
     label: string;
@@ -2818,18 +3236,21 @@ function DetailsPanel({
   const selectSection = (key: DetailSectionKey) => {
     setActiveSection(key);
     requestAnimationFrame(() => {
-      paneRef.current?.scrollTo({ top: 0, behavior: "auto" });
+      bodyRef.current?.scrollTo({ top: 0, behavior: "auto" });
     });
   };
 
   return (
-    <div className="oq-details-panel" ref={paneRef}>
+    <div className="oq-details-panel">
       <div className="oq-panel-bar oq-panel-heading">
         <h2>Details</h2>
         <button
           className="oq-panel-close"
           aria-label="Close details panel"
-          onClick={onClose}
+          onClick={() => {
+            discardChanges();
+            onClose();
+          }}
         >
           <Icon name="close" />
         </button>
@@ -2846,7 +3267,7 @@ function DetailsPanel({
           </button>
         ))}
       </nav>
-      <div className="oq-panel-body" key={activeSection}>
+      <div className="oq-panel-body" ref={bodyRef} key={activeSection}>
         <CrossFormCheckSummary conflicts={conflicts} onNavigate={onNavigate} />
         <header className="oq-panel-intro">
           <h3>{selectedSection.title}</h3>
@@ -2867,13 +3288,37 @@ function DetailsPanel({
             )}
             <EditableFieldGrid
               fields={group.fields}
-              values={values}
-              onChange={onChange}
+              values={effectiveValues}
+              onChange={handleChange}
               onNavigate={onNavigate}
             />
           </div>
         ))}
       </div>
+      <footer className="oq-panel-savebar">
+        <span aria-live="polite">
+          {hasChanges
+            ? `${changedKeys.length} unsaved ${changedKeys.length === 1 ? "change" : "changes"}`
+            : "All changes saved"}
+        </span>
+        <div>
+          <button
+            type="button"
+            disabled={!hasChanges}
+            onClick={discardChanges}
+          >
+            Discard
+          </button>
+          <button
+            type="button"
+            className="primary"
+            disabled={!hasChanges}
+            onClick={saveChanges}
+          >
+            Save changes
+          </button>
+        </div>
+      </footer>
     </div>
   );
 }
@@ -2889,6 +3334,7 @@ export default function Page() {
   const [partyOpen, setPartyOpen] = useState(false);
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [detailValues, setDetailValues] = useState(initialDetailValues);
+  const [parties, setParties] = useState<TransactionParty[]>(initialParties);
   const [checkedFields, setCheckedFields] = useState<string[]>(() =>
     linkedCheckedFields(initialDetailValues),
   );
@@ -2901,7 +3347,12 @@ export default function Page() {
     field: PdfFieldDefinition;
   } | null>(null);
   const [linkedHighlightId, setLinkedHighlightId] = useState<string | null>(null);
+  const [pendingLinkedTarget, setPendingLinkedTarget] =
+    useState<DetailPdfLink | null>(null);
   const [transactionNameOverride, setTransactionNameOverride] = useState<
+    string | null
+  >(null);
+  const [transactionNameDraft, setTransactionNameDraft] = useState<
     string | null
   >(null);
   const [pdf, setPdf] = useState<PdfSelection>({
@@ -2913,6 +3364,12 @@ export default function Page() {
   const canvasRef = useRef<HTMLElement | null>(null);
   const stageRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const linkedHighlightTimerRef = useRef<number | null>(null);
+  const activePacketPageIndex = Math.max(
+    0,
+    documentPages.findIndex(
+      (page) => page.label === pdf.label && page.page === pdf.page,
+    ),
+  );
 
   const selectPanel = (
     nextPanel: "forms" | "assistant" | "details" | "parties",
@@ -2965,6 +3422,9 @@ export default function Page() {
       }
     }
     if (!closest) return;
+    setActivePdfField((current) =>
+      current?.stageKey === pageKey(closest) ? current : null,
+    );
     setPdf((current) =>
       current.label === closest.label && current.page === closest.page
         ? current
@@ -2991,6 +3451,7 @@ export default function Page() {
   }, [syncActivePage]);
 
   const goToPage = (page: DocumentPage) => {
+    setActivePdfField(null);
     setPdf(page);
     stageRefs.current[pageKey(page)]?.scrollIntoView({
       behavior: "smooth",
@@ -3053,39 +3514,69 @@ export default function Page() {
       setNotice(`${target.form} page ${target.page} is not in this transaction packet.`);
       return;
     }
-    const targetId = linkedPdfFieldDomId(target);
-    const field = document.getElementById(targetId);
-    const canvas = canvasRef.current;
-    if (!field || !canvas) {
-      setNotice(`The linked field in ${target.form} page ${target.page} is unavailable.`);
-      return;
-    }
-
+    setActivePdfField(null);
     setPdf(page);
-    if (window.location.hash !== `#${targetId}`) {
-      window.location.hash = targetId;
-    }
-    const fieldRect = field.getBoundingClientRect();
-    const canvasRect = canvas.getBoundingClientRect();
-    const centeredTop =
-      canvas.scrollTop +
-      fieldRect.top -
-      canvasRect.top -
-      (canvas.clientHeight - fieldRect.height) / 2;
-    canvas.scrollTo({ top: Math.max(0, centeredTop), behavior: "auto" });
-    field.focus({ preventScroll: true });
-    setLinkedHighlightId(targetId);
-    if (linkedHighlightTimerRef.current !== null) {
-      window.clearTimeout(linkedHighlightTimerRef.current);
-    }
-    linkedHighlightTimerRef.current = window.setTimeout(
-      () => setLinkedHighlightId(null),
-      6000,
-    );
-    setNotice(`Opened ${target.label} · ${target.form} page ${target.page}`);
+    setPendingLinkedTarget(target);
+    stageRefs.current[pageKey(page)]?.scrollIntoView({
+      behavior: "auto",
+      block: "start",
+    });
   };
 
+  // Linked fields on distant pages are intentionally absent until their page
+  // enters the three-page mount window. Reveal them after React mounts it.
+  useEffect(() => {
+    if (
+      !pendingLinkedTarget ||
+      pdf.label !== pendingLinkedTarget.form ||
+      pdf.page !== pendingLinkedTarget.page
+    ) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const targetId = linkedPdfFieldDomId(pendingLinkedTarget);
+      const field = document.getElementById(targetId);
+      const canvas = canvasRef.current;
+      if (!field || !canvas) {
+        setNotice(
+          `The linked field in ${pendingLinkedTarget.form} page ${pendingLinkedTarget.page} is unavailable.`,
+        );
+        setPendingLinkedTarget(null);
+        return;
+      }
+      window.history.replaceState(null, "", `#${targetId}`);
+      const fieldRect = field.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
+      const centeredTop =
+        canvas.scrollTop +
+        fieldRect.top -
+        canvasRect.top -
+        (canvas.clientHeight - fieldRect.height) / 2;
+      canvas.scrollTo({ top: Math.max(0, centeredTop), behavior: "auto" });
+      field.focus({ preventScroll: true });
+      setLinkedHighlightId(targetId);
+      if (linkedHighlightTimerRef.current !== null) {
+        window.clearTimeout(linkedHighlightTimerRef.current);
+      }
+      linkedHighlightTimerRef.current = window.setTimeout(
+        () => setLinkedHighlightId(null),
+        6000,
+      );
+      setNotice(
+        `Opened ${pendingLinkedTarget.label} · ${pendingLinkedTarget.form} page ${pendingLinkedTarget.page}`,
+      );
+      setPendingLinkedTarget(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pdf.label, pdf.page, pendingLinkedTarget]);
+
   const transactionName = transactionNameOverride ?? activeTransactionName;
+  const saveTransactionName = () => {
+    const nextName = transactionNameDraft?.trim();
+    if (!nextName) return;
+    setTransactionNameOverride(nextName);
+    setTransactionNameDraft(null);
+  };
 
   const zooms = ["Smaller", "Normal", "Larger", "Fit width", "Fit page"];
   const openDocument = (document: string) => {
@@ -3104,16 +3595,47 @@ export default function Page() {
       <header className="fe-heading">
         <EditorNavigationFlyout />
         <h1 className="fe-title">
-          <span>{transactionName}</span>
-          <button
-            aria-label="Edit transaction name"
-            onClick={() => {
-              const next = window.prompt("Transaction name", transactionName);
-              if (next?.trim()) setTransactionNameOverride(next.trim());
-            }}
-          >
-            <Icon name="edit" size={15} />
-          </button>
+          {transactionNameDraft === null ? (
+            <>
+              <span>{transactionName}</span>
+              <button
+                type="button"
+                aria-label="Edit transaction name"
+                onClick={() => setTransactionNameDraft(transactionName)}
+              >
+                <Icon name="edit" size={15} />
+              </button>
+            </>
+          ) : (
+            <span className="oq-title-editor">
+              <input
+                autoFocus
+                aria-label="Transaction name"
+                maxLength={80}
+                value={transactionNameDraft}
+                onChange={(event) => setTransactionNameDraft(event.target.value)}
+                onFocus={(event) => event.currentTarget.select()}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") {
+                    event.preventDefault();
+                    saveTransactionName();
+                  }
+                  if (event.key === "Escape") {
+                    setTransactionNameDraft(null);
+                  }
+                }}
+              />
+              <button
+                type="button"
+                className="oq-title-save"
+                aria-label="Save transaction name"
+                disabled={!transactionNameDraft.trim()}
+                onClick={saveTransactionName}
+              >
+                <Icon name="check" size={17} />
+              </button>
+            </span>
+          )}
         </h1>
         <b>2458 Maplewood Ave 12B, Los Angeles, CA 90026</b>
       </header>
@@ -3171,12 +3693,16 @@ export default function Page() {
       </div>
       <div className="fe-content">
         <section className="fe-canvas" ref={canvasRef}>
-          {documentPages.map((item) => {
+          {documentPages.map((item, pageIndex) => {
             const documentCode =
               item.label === "AD" || item.label === "BRBC" || item.label === "PRBS"
                 ? item.label
                 : null;
             const stageKey = pageKey(item);
+            const isActivePage = pageIndex === activePacketPageIndex;
+            const shouldMountPage =
+              Math.abs(pageIndex - activePacketPageIndex) <=
+              PDF_PAGE_MOUNT_RADIUS;
             const pageFields = documentCode
               ? pdfFieldsByDocument[documentCode].filter(
                   (field) => field.page === item.page,
@@ -3191,17 +3717,21 @@ export default function Page() {
                   stageRefs.current[stageKey] = node;
                 }}
               >
-                <Image
-                  className="oq-pdf-frame"
-                  src={previewImage(item)}
-                  alt={`${item.title}, page ${item.page}`}
-                  width={1224}
-                  height={1584}
-                  loading={item.displayPage === 1 ? "eager" : "lazy"}
-                  fetchPriority={item.displayPage === 1 ? "high" : "auto"}
-                  unoptimized
-                />
-                {documentCode &&
+                {shouldMountPage ? (
+                  <Image
+                    className="oq-pdf-frame"
+                    src={previewImage(item)}
+                    alt={`${item.title}, page ${item.page}`}
+                    width={1224}
+                    height={1584}
+                    loading={isActivePage ? "eager" : "lazy"}
+                    fetchPriority={isActivePage ? "high" : "low"}
+                    unoptimized
+                  />
+                ) : (
+                  <div className="oq-pdf-placeholder" aria-hidden="true" />
+                )}
+                {shouldMountPage && documentCode &&
                   pageFields.map((field) => {
                     const id = `${documentCode}:${field.id}`;
                     const value = pdfFieldValues[id] ?? field.value ?? "";
@@ -3237,14 +3767,18 @@ export default function Page() {
                       <button
                         key={id}
                         id={linked ? domId : undefined}
-                        className={`oq-pdf-field ${field.kind === "checkbox" ? "is-checkbox" : ""} ${field.kind === "signature" ? "is-signature" : ""} ${checked ? "checked" : ""} ${value ? "has-value" : ""} ${linkedHighlightId === domId ? "is-linked-target" : ""}`}
+                        className={`oq-pdf-field ${field.kind === "checkbox" ? "is-checkbox" : ""} ${field.kind === "signature" ? "is-signature" : ""} ${linked ? "is-linked" : ""} ${checked ? "checked" : ""} ${value ? "has-value" : ""} ${linkedHighlightId === domId ? "is-linked-target" : ""}`}
                         style={{
                           left: `${field.left}%`,
                           top: `${field.top}%`,
                           width: `${field.width}%`,
                           height: `${field.height}%`,
                         }}
-                        title={pdfFieldLabel(field)}
+                        title={
+                          linked
+                            ? `${pdfFieldLabel(field)} — shared with other forms`
+                            : pdfFieldLabel(field)
+                        }
                         data-field-kind={field.kind}
                         data-document-code={documentCode}
                         data-field-value={value}
@@ -3272,7 +3806,7 @@ export default function Page() {
                       </button>
                     );
                   })}
-                {activePdfField?.stageKey === stageKey && (
+                {shouldMountPage && activePdfField?.stageKey === stageKey && (
                   <PdfFieldPopover
                     key={`${activePdfField.documentCode}:${activePdfField.field.id}`}
                     documentCode={activePdfField.documentCode}
@@ -3283,9 +3817,34 @@ export default function Page() {
                       ] ?? activePdfField.field.value ?? ""
                     }
                     onClose={() => setActivePdfField(null)}
-                    onSave={(value) => {
-                      const id = `${activePdfField.documentCode}:${activePdfField.field.id}`;
-                      setPdfFieldValues((current) => ({ ...current, [id]: value }));
+                    onSave={(value, scope) => {
+                      const { self, siblings } = siblingLinksForPdfField(
+                        activePdfField.documentCode,
+                        activePdfField.field.id,
+                      );
+                      if (scope === "everywhere" && self) {
+                        // One transaction value behind several printed fields:
+                        // write it back to the record when the mapping is 1:1,
+                        // and mirror it into every field that shares it.
+                        if (self.detailKeys.length === 1) {
+                          updateDetailValue(self.detailKeys[0], value);
+                        }
+                        setPdfFieldValues((current) => {
+                          const next = { ...current };
+                          [self, ...siblings].forEach((link) => {
+                            next[linkedPdfId(link)] = value;
+                          });
+                          return next;
+                        });
+                        setNotice(
+                          `Updated ${siblings.length + 1} linked fields across ${[
+                            ...new Set([self, ...siblings].map((l) => l.form)),
+                          ].join(", ")}.`,
+                        );
+                      } else {
+                        const id = `${activePdfField.documentCode}:${activePdfField.field.id}`;
+                        setPdfFieldValues((current) => ({ ...current, [id]: value }));
+                      }
                       setActivePdfField(null);
                     }}
                   />
@@ -3340,6 +3899,8 @@ export default function Page() {
             ) : panel === "parties" ? (
               <PartiesPanel
                 onAddParty={() => setPartyOpen(true)}
+                parties={parties}
+                onPartiesChange={setParties}
                 values={detailValues}
                 onChange={updateDetailValue}
                 onNavigate={goToLinkedField}
