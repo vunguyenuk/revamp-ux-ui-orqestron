@@ -1104,6 +1104,7 @@
   overflow: auto;
 }
 .oq-documents {
+  --oq-documents-inset: 20px;
   padding: 18px 20px 24px;
 }
 .oq-doc-toolbar {
@@ -1474,9 +1475,10 @@
 .oq-workspace-title {
   justify-content: flex-start;
   gap: 10px;
-  margin-bottom: 0;
-  padding-bottom: 12px;
+  margin: -18px calc(-1 * var(--oq-documents-inset)) 0;
+  padding: 13px 10px 13px 16px;
   border-bottom: 1px solid var(--oq-line);
+  background: var(--oq-paper);
 }
 .oq-workspace-title > .oq-add {
   margin-left: auto;
@@ -1484,6 +1486,9 @@
 }
 .oq-doc-list {
   border-top: 0;
+}
+.oq-workspace-title + .oq-doc-list {
+  padding-top: var(--oq-documents-inset);
 }
 .oq-doc-row {
   grid-template-columns: 18px 24px minmax(0, 1fr) 44px;
@@ -1604,6 +1609,8 @@
   text-align: center;
 }
 .oq-grab-transaction {
+  margin-inline: calc(-1 * var(--oq-documents-inset));
+  padding-inline: var(--oq-documents-inset);
   padding-top: 20px;
   border-top: 1px solid var(--oq-line);
 }
@@ -3306,6 +3313,7 @@ button.oq-party-summary.active b {
     height: 76px;
   }
   .oq-documents {
+    --oq-documents-inset: 16px;
     padding-inline: 16px;
   }
   .oq-document-search,
