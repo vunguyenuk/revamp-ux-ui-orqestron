@@ -196,11 +196,18 @@ function createDocumentRow(name, status) {
   item.draggable = true;
   item.tabIndex = 0;
   item.setAttribute('role', 'button');
-  item.innerHTML = '<span class="oq-drag-handle" title="Drag to reorder">' + gripIcon + '</span><span class="oq-file-icon">' + fileIcon + '</span><div><b></b><small></small></div><button aria-label="Remove document">' + closeIcon + '</button>';
+  // A document added here has not been filled or sent yet, so it starts as a draft.
+  item.innerHTML = '<span class="oq-drag-handle" title="Drag to reorder">' + gripIcon + '</span>'
+    + '<span class="oq-file-icon">' + fileIcon + '</span>'
+    + '<button class="oq-doc-open"><span class="oq-doc-copy"><b></b>'
+    + '<span class="oq-doc-meta-line"><em class="oq-doc-status is-neutral">Draft</em><small></small></span>'
+    + '</span></button>'
+    + '<button class="oq-doc-remove" aria-label="Remove document">' + closeIcon + '</button>';
   item.querySelector('b').textContent = name;
   item.querySelector('small').textContent = status;
-  item.querySelector('button').setAttribute('aria-label', 'Remove ' + name);
-  item.querySelector('button').addEventListener('click', () => { item.remove(); updateCount(); });
+  const removeButton = item.querySelector('.oq-doc-remove');
+  removeButton.setAttribute('aria-label', 'Remove ' + name);
+  removeButton.addEventListener('click', () => { item.remove(); updateCount(); });
   return item;
 }
 const documentSearch = document.querySelector('[aria-label="Search transaction documents"]');

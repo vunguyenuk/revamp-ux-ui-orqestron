@@ -1190,7 +1190,15 @@ function FormsPanel({
   const [docs, setDocs] = useState([
     "[AD] Disclosure Regarding Real Estate Agency Relationship (Buyer)",
     "[BRBC] Buyer Representation and Broker Compensation Agreement",
+    "[PRBS] Possible Representation of More Than One Buyer or Seller",
   ]);
+  const [docStatuses] = useState<Record<string, DocumentStatus>>({
+    "[AD] Disclosure Regarding Real Estate Agency Relationship (Buyer)":
+      "filled",
+    "[BRBC] Buyer Representation and Broker Compensation Agreement": "partial",
+    "[PRBS] Possible Representation of More Than One Buyer or Seller":
+      "sent_to_docusign",
+  });
   const availableForms = [
     {
       code: "AD",
@@ -1280,11 +1288,11 @@ function FormsPanel({
               ? `${status.filled}/${status.total} filled`
               : "Status unavailable";
             const isOpen = doc.startsWith(`[${activeLabel}]`);
-            const metaLabel = status
-              ? `${isOpen ? "Currently open" : "PDF form"} \u00b7 ${status.filled}/${status.total} fields`
-              : isOpen
-                ? "Currently open \u00b7 PDF form"
-                : "PDF form";
+            const docStatus = docStatuses[doc] ?? "draft";
+            const statusMeta = documentStatusMeta[docStatus];
+            const fieldsLabel = status
+              ? `${status.filled}/${status.total} fields`
+              : "PDF form";
             return (
               <div
                 className={`oq-doc-row ${isOpen ? "active" : ""}`}
@@ -1302,12 +1310,17 @@ function FormsPanel({
                 </span>
                 <button
                   className="oq-doc-open"
-                  aria-label={`Open ${doc}, ${statusLabel}`}
+                  aria-label={`Open ${doc}, ${statusMeta.label}, ${statusLabel}`}
                   onClick={() => onOpen(doc)}
                 >
                   <span className="oq-doc-copy">
                     <b>{doc}</b>
-                    <small>{metaLabel}</small>
+                    <span className="oq-doc-meta-line">
+                      <em className={`oq-doc-status is-${statusMeta.tone}`}>
+                        {statusMeta.label}
+                      </em>
+                      <small>{fieldsLabel}</small>
+                    </span>
                   </span>
                 </button>
                 <button
@@ -1791,6 +1804,32 @@ type LinkedFieldConflict = {
   expected: string;
   actual: string;
   target: DetailPdfLink;
+};
+
+/**
+ * Document lifecycle, keyed by the value the API returns. Labels stay neutral
+ * about the e-sign provider — the enum says docusign, the UI must not.
+ */
+type DocumentStatus =
+  | "draft"
+  | "filled"
+  | "sent_to_docusign"
+  | "partial"
+  | "completed"
+  | "declined"
+  | "kept_signed";
+
+const documentStatusMeta: Record<
+  DocumentStatus,
+  { label: string; tone: string }
+> = {
+  draft: { label: "Draft", tone: "neutral" },
+  filled: { label: "Filled", tone: "info" },
+  partial: { label: "Partial", tone: "warn" },
+  sent_to_docusign: { label: "Sent for signing", tone: "progress" },
+  completed: { label: "Completed", tone: "good" },
+  declined: { label: "Declined", tone: "bad" },
+  kept_signed: { label: "Kept signed", tone: "good" },
 };
 
 const partyRoleOptions = [
