@@ -433,7 +433,7 @@ const PRBS_SRC =
 /** Every page of every document in the transaction, in packet order. */
 const documentPages: DocumentPage[] = [
   ...Array.from({ length: 3 }, (_, index) => ({
-    thumb: `/form-thumbnails/ad-${index + 1}.png`,
+    thumb: `/form-thumbnails/rail/ad-${index + 1}.png`,
     src: AD_SRC,
     page: index + 1,
     displayPage: index + 1,
@@ -441,7 +441,7 @@ const documentPages: DocumentPage[] = [
     title: "Disclosure Regarding Real Estate Agency Relationship (Buyer)",
   })),
   ...Array.from({ length: 13 }, (_, index) => ({
-    thumb: `/form-thumbnails/brbc-page-${String(index + 1).padStart(2, "0")}.png`,
+    thumb: `/form-thumbnails/rail/brbc-page-${String(index + 1).padStart(2, "0")}.png`,
     src: BRBC_SRC,
     page: index + 1,
     displayPage: index + 4,
@@ -449,7 +449,7 @@ const documentPages: DocumentPage[] = [
     title: "Buyer Representation and Broker Compensation Agreement",
   })),
   {
-    thumb: "/form-thumbnails/prbs.png",
+    thumb: "/form-thumbnails/rail/prbs.png",
     src: PRBS_SRC,
     page: 1,
     displayPage: 17,
@@ -712,12 +712,52 @@ function SignaturePackageFlow({
 
 function PageThumbnailRail({
   activeKey,
+  currentDocumentCode,
   onSelect,
 }: {
   activeKey: string;
+  currentDocumentCode: string;
   onSelect: (page: DocumentPage) => void;
 }) {
   const listRef = useRef<HTMLDivElement | null>(null);
+  const currentDocumentPages = documentPages.filter(
+    (page) => page.label === currentDocumentCode,
+  );
+  const [visibleThumbnailKeys, setVisibleThumbnailKeys] = useState<Set<string>>(
+    () => new Set(documentPages.slice(0, 4).map(pageKey)),
+  );
+
+  // Native image lazy-loading uses a generous preload margin. Observe the
+  // rail itself so thumbnails outside its near viewport are actually unmounted.
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setVisibleThumbnailKeys((current) => {
+          const next = new Set(current);
+          entries.forEach((entry) => {
+            const key = (entry.target as HTMLElement).dataset.pageKey;
+            if (!key) return;
+            if (entry.isIntersecting) next.add(key);
+            else next.delete(key);
+          });
+          if (
+            next.size === current.size &&
+            [...next].every((key) => current.has(key))
+          ) {
+            return current;
+          }
+          return next;
+        });
+      },
+      { root: list, rootMargin: "220px 0px", threshold: 0.01 },
+    );
+    list.querySelectorAll<HTMLElement>("[data-page-key]").forEach((item) =>
+      observer.observe(item),
+    );
+    return () => observer.disconnect();
+  }, [currentDocumentCode]);
 
   // Follow the canvas: keep the active thumbnail in view without letting
   // scrollIntoView move the page behind it.
@@ -733,29 +773,39 @@ function PageThumbnailRail({
     <aside className="oq-page-rail" aria-label="Document pages">
       <header>
         <span>PAGES</span>
-        <small>{documentPages.length}</small>
+        <small>{currentDocumentPages.length}</small>
       </header>
       <div ref={listRef}>
-        {documentPages.map((item) => (
-          <button
-            key={pageKey(item)}
-            className={activeKey === pageKey(item) ? "active" : ""}
-            onClick={() => onSelect(item)}
-            aria-label={`Go to ${item.label} page ${item.page}, packet page ${item.displayPage}`}
-            aria-current={activeKey === pageKey(item) ? "true" : undefined}
-          >
-            <span>{item.label}</span>
-            <Image
-              src={item.thumb}
-              alt=""
-              width={468}
-              height={605}
-              loading="lazy"
-              unoptimized
-            />
-            <b>{item.displayPage}</b>
-          </button>
-        ))}
+        {currentDocumentPages.map((item) => {
+          const key = pageKey(item);
+          const active = activeKey === key;
+          const shouldMountThumbnail = active || visibleThumbnailKeys.has(key);
+          return (
+            <button
+              key={key}
+              data-page-key={key}
+              className={active ? "active" : ""}
+              onClick={() => onSelect(item)}
+              aria-label={`Go to ${item.label} page ${item.page}`}
+              aria-current={active ? "true" : undefined}
+            >
+              {shouldMountThumbnail ? (
+                <Image
+                  src={item.thumb}
+                  alt=""
+                  width={170}
+                  height={220}
+                  loading={active ? "eager" : "lazy"}
+                  fetchPriority={active ? "high" : "low"}
+                  unoptimized
+                />
+              ) : (
+                <i className="oq-page-thumb-placeholder" aria-hidden="true" />
+              )}
+              <b>{item.page}</b>
+            </button>
+          );
+        })}
       </div>
     </aside>
   );
@@ -1315,6 +1365,220 @@ function AddFormsModal({
   );
 }
 
+type AvailableTransactionForm = {
+  code: string;
+  name: string;
+  pages: number;
+  href: string;
+};
+
+const previewThumbnailSrc = (code: string, page: number) => {
+  const normalizedCode = code.toLowerCase();
+  if (code === "AD") return `/form-thumbnails/rail/ad-${page}.png`;
+  if (code === "BRBC") {
+    return `/form-thumbnails/rail/brbc-page-${String(page).padStart(2, "0")}.png`;
+  }
+  if (code === "PRBS") return "/form-thumbnails/rail/prbs.png";
+  return `/forms/previews/thumbnails/${normalizedCode}-${String(page).padStart(2, "0")}.png`;
+};
+
+const previewPageImageSrc = (code: string, page: number) => {
+  const normalizedCode = code.toLowerCase();
+  if (code === "AD") return `/form-pages/ad-${page}.png`;
+  if (code === "BRBC") {
+    return `/form-pages/brbc-${String(page).padStart(2, "0")}.png`;
+  }
+  if (code === "PRBS") return "/form-pages/prbs-1.png";
+  return `/forms/previews/pages/${normalizedCode}-${String(page).padStart(2, "0")}.png`;
+};
+
+function PreviewPageRail({
+  form,
+  currentPage,
+  onSelect,
+}: {
+  form: AvailableTransactionForm;
+  currentPage: number;
+  onSelect: (page: number) => void;
+}) {
+  const listRef = useRef<HTMLDivElement | null>(null);
+  const [visiblePages, setVisiblePages] = useState<Set<number>>(
+    () => new Set([1, 2, 3]),
+  );
+
+  useEffect(() => {
+    const list = listRef.current;
+    if (!list || typeof IntersectionObserver === "undefined") return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        setVisiblePages((current) => {
+          const next = new Set(current);
+          entries.forEach((entry) => {
+            const page = Number((entry.target as HTMLElement).dataset.previewPage);
+            if (!page) return;
+            if (entry.isIntersecting) next.add(page);
+            else next.delete(page);
+          });
+          if (
+            next.size === current.size &&
+            [...next].every((page) => current.has(page))
+          ) {
+            return current;
+          }
+          return next;
+        });
+      },
+      { root: list, rootMargin: "180px 0px", threshold: 0.01 },
+    );
+    list.querySelectorAll<HTMLElement>("[data-preview-page]").forEach((item) =>
+      observer.observe(item),
+    );
+    return () => observer.disconnect();
+  }, [form.code]);
+
+  useEffect(() => {
+    const list = listRef.current;
+    const active = list?.querySelector<HTMLElement>("button.active");
+    if (!list || !active) return;
+    const top = active.offsetTop - list.clientHeight / 2 + active.offsetHeight / 2;
+    list.scrollTo({ top, behavior: "smooth" });
+  }, [currentPage]);
+
+  return (
+    <aside className="oq-preview-page-rail" aria-label="PDF preview pages">
+      <header>
+        <span>PAGES</span>
+        <small>{form.pages}</small>
+      </header>
+      <div ref={listRef}>
+        {Array.from({ length: form.pages }, (_, index) => index + 1).map((page) => {
+          const active = page === currentPage;
+          const shouldMountThumbnail = active || visiblePages.has(page);
+          return (
+            <button
+              type="button"
+              key={page}
+              data-preview-page={page}
+              className={active ? "active" : ""}
+              aria-current={active ? "page" : undefined}
+              aria-label={`Preview page ${page} of ${form.pages}`}
+              onClick={() => onSelect(page)}
+            >
+              {shouldMountThumbnail ? (
+                <Image
+                  src={previewThumbnailSrc(form.code, page)}
+                  alt=""
+                  width={170}
+                  height={220}
+                  loading={active ? "eager" : "lazy"}
+                  fetchPriority={active ? "high" : "low"}
+                  unoptimized
+                />
+              ) : (
+                <i aria-hidden="true" />
+              )}
+              <b>{page}</b>
+            </button>
+          );
+        })}
+      </div>
+    </aside>
+  );
+}
+
+function PdfPreviewModal({
+  form,
+  onClose,
+}: {
+  form: AvailableTransactionForm;
+  onClose: () => void;
+}) {
+  const [currentPage, setCurrentPage] = useState(1);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => document.removeEventListener("keydown", onKeyDown);
+  }, [onClose]);
+
+  return (
+    <div
+      className="oq-preview-backdrop"
+      role="presentation"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        className="oq-preview-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="oq-preview-title"
+      >
+        <header>
+          <span className="oq-file-icon" aria-hidden="true">
+            <Icon name="file" />
+          </span>
+          <span>
+            <small>PDF preview</small>
+            <b id="oq-preview-title" title={`[${form.code}] ${form.name}`}>
+              [{form.code}] {form.name}
+            </b>
+          </span>
+          <div className="oq-preview-actions">
+            {form.href && (
+              <a href={form.href} target="_blank" rel="noreferrer">
+                Open PDF
+              </a>
+            )}
+            <button autoFocus type="button" aria-label="Close PDF preview" onClick={onClose}>
+              <Icon name="close" />
+            </button>
+          </div>
+        </header>
+        <div className={`oq-preview-body ${form.href ? "" : "no-pages"}`}>
+          {form.href && (
+            <PreviewPageRail
+              form={form}
+              currentPage={currentPage}
+              onSelect={setCurrentPage}
+            />
+          )}
+          <div className="oq-preview-canvas">
+            {form.href ? (
+              <div className="oq-preview-document-page">
+                <Image
+                  src={previewPageImageSrc(form.code, currentPage)}
+                  alt={`${form.name}, page ${currentPage}`}
+                  width={1224}
+                  height={1584}
+                  loading="eager"
+                  fetchPriority="high"
+                  unoptimized
+                />
+              </div>
+            ) : (
+              <div className="oq-preview-unavailable" role="status">
+                <span className="oq-file-icon" aria-hidden="true">
+                  <Icon name="file" />
+                </span>
+                <b>Preview unavailable</b>
+                <p>This form does not have a PDF file attached yet.</p>
+              </div>
+            )}
+          </div>
+        </div>
+        <footer>
+          <span>{currentPage} / {form.pages} {form.pages === 1 ? "page" : "pages"}</span>
+          <small>Preview only</small>
+        </footer>
+      </section>
+    </div>
+  );
+}
+
 function FormsPanel({
   activeLabel,
   fillStatusByDocument,
@@ -1335,6 +1599,8 @@ function FormsPanel({
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [query, setQuery] = useState("");
   const [folder, setFolder] = useState("all");
+  const [previewForm, setPreviewForm] =
+    useState<AvailableTransactionForm | null>(null);
   const [docs, setDocs] = useState([
     "[AD] Disclosure Regarding Real Estate Agency Relationship (Buyer)",
     "[BRBC] Buyer Representation and Broker Compensation Agreement",
@@ -1347,7 +1613,7 @@ function FormsPanel({
     "[PRBS] Possible Representation of More Than One Buyer or Seller":
       "sent_to_docusign",
   });
-  const availableForms = [
+  const availableForms: AvailableTransactionForm[] = [
     {
       code: "AD",
       name: "Disclosure Regarding Real Estate Agency Relationship (Buyer)",
@@ -1376,13 +1642,13 @@ function FormsPanel({
       code: "ADM",
       name: "Addendum No. 1",
       pages: 1,
-      href: "",
+      href: "/forms/previews/ADM_Addendum_No_1.pdf",
     },
     {
       code: "RPA",
       name: "California Residential Purchase Agreement and Joint Escrow Instructions",
-      pages: 16,
-      href: "",
+      pages: 25,
+      href: "/forms/previews/RPA_California_Residential_Purchase_Agreement.pdf",
     },
   ];
   const addDocument = (name: string) => {
@@ -1558,11 +1824,18 @@ function FormsPanel({
                   <span className="oq-file-icon" aria-hidden="true">
                     <Icon name="file" />
                   </span>
-                  <div>
+                  <button
+                    className="oq-available-preview"
+                    type="button"
+                    onClick={() => setPreviewForm(form)}
+                    aria-label={`Preview ${form.name}`}
+                  >
                     <b>{formName}</b>
                     <small>Form · {form.pages} {form.pages === 1 ? "page" : "pages"}</small>
-                  </div>
+                  </button>
                   <button
+                    className="oq-available-add"
+                    type="button"
                     onClick={() => addDocument(formName)}
                     aria-label={`Add ${form.name}`}
                   >
@@ -1587,6 +1860,12 @@ function FormsPanel({
           onAdd={(forms) =>
             setDocs((current) => [...new Set([...current, ...forms])])
           }
+        />
+      )}
+      {previewForm && (
+        <PdfPreviewModal
+          form={previewForm}
+          onClose={() => setPreviewForm(null)}
         />
       )}
     </div>
@@ -3852,7 +4131,11 @@ export default function Page() {
               </div>
             );
           })}
-          <PageThumbnailRail activeKey={pageKey(pdf)} onSelect={goToPage} />
+          <PageThumbnailRail
+            activeKey={pageKey(pdf)}
+            currentDocumentCode={pdf.label}
+            onSelect={goToPage}
+          />
           <button
             className="fe-info"
             aria-label="Document information"
