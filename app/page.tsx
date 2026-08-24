@@ -810,6 +810,29 @@ const signingDateFieldIds = new Set(
   ),
 );
 
+/**
+ * The PDF text extractor can emit a subset font's raw bytes (every character
+ * shifted, so "Broker" arrives as "URNHU") or fall back to the field id. Both
+ * are unreadable, so fall back to a humanised id rather than showing them.
+ */
+const humanizePdfFieldId = (id: string) =>
+  id
+    .split(".")
+    .slice(-2)
+    .join(" ")
+    .replace(/_/g, " ")
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+
+function pdfFieldLabel(field: PdfFieldDefinition) {
+  const label = field.label?.trim();
+  if (!label || label === field.id) return humanizePdfFieldId(field.id);
+  const letters = label.replace(/[^A-Za-z]/g, "");
+  if (letters.length >= 4 && !/[a-z]/.test(label)) {
+    return humanizePdfFieldId(field.id);
+  }
+  return label;
+}
+
 function isSigningDateField(
   documentCode: PdfDocumentCode,
   field: PdfFieldDefinition,
@@ -857,7 +880,7 @@ function PdfFieldPopover({
       className="oq-field-popover"
       style={anchoredStyle}
       role="dialog"
-      aria-label={`Fill ${field.label}`}
+      aria-label={`Fill ${pdfFieldLabel(field)}`}
       onClick={(event) => event.stopPropagation()}
       onSubmit={(event) => {
         event.preventDefault();
@@ -870,7 +893,7 @@ function PdfFieldPopover({
       <header>
         <div>
           <small>{documentCode} · PAGE {field.page}</small>
-          <h3>{field.label}</h3>
+          <h3>{pdfFieldLabel(field)}</h3>
         </div>
         <button type="button" onClick={onClose} aria-label="Close field editor">
           <Icon name="close" size={16} />
@@ -908,7 +931,7 @@ function PdfFieldPopover({
             type={field.kind === "date" ? "date" : "text"}
             value={draft}
             maxLength={field.kind === "text" ? 120 : undefined}
-            placeholder={`Enter ${field.label.toLowerCase()}`}
+            placeholder={`Enter ${pdfFieldLabel(field).toLowerCase()}`}
             onChange={(event) => setDraft(event.target.value)}
           />
         </label>
@@ -3221,14 +3244,14 @@ export default function Page() {
                           width: `${field.width}%`,
                           height: `${field.height}%`,
                         }}
-                        title={field.label}
+                        title={pdfFieldLabel(field)}
                         data-field-kind={field.kind}
                         data-document-code={documentCode}
                         data-field-value={value}
                         aria-label={
                           field.kind === "checkbox"
-                            ? `Toggle ${field.label}`
-                            : `Fill ${field.label}`
+                            ? `Toggle ${pdfFieldLabel(field)}`
+                            : `Fill ${pdfFieldLabel(field)}`
                         }
                         onClick={() => {
                           if (field.kind === "checkbox") {
