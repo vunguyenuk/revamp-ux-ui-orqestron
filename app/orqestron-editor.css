@@ -10,7 +10,7 @@
   --oq-panel-title-size: var(--text-2xl);
   --oq-shell-inset: 16px;
   color: var(--oq-ink);
-  font-family: "Avenir Next", Avenir, "Helvetica Neue", sans-serif;
+  font-family: var(--font-sans);
   font-weight: var(--fw);
   letter-spacing: -0.008em;
 }
@@ -104,7 +104,7 @@
   border-radius: 10px;
   background: var(--oq-accent);
   color: var(--oq-paper);
-  font-family: "Iowan Old Style", Charter, Georgia, serif;
+  font-family: var(--font-sans);
   font-size: var(--text-xl);
 }
 .oq-editor-nav-flyout > header > b {

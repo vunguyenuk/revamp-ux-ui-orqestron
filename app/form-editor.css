@@ -20,7 +20,7 @@
   overflow: hidden;
   background: var(--fe-bg);
   color: var(--fe-ink);
-  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  font-family: var(--font-sans);
 }
 
 .fe-icon {

@@ -4,6 +4,10 @@
   --line: #dedbd4;
   --accent: #c36d46;
 
+  /* One typeface for the whole product. Avenir Next ships with macOS; the
+     fallbacks keep the same humanist-sans proportions elsewhere. */
+  --font-sans: "Avenir Next", Avenir, "Helvetica Neue", Helvetica, Arial, sans-serif;
+
   /* Type scale — every font-size in the app resolves to one of these seven
      steps. Add a step here rather than a one-off px value in a component. */
   --text-2xs: 11px;  /* uppercase micro-labels, counters, page badges */
@@ -31,10 +35,10 @@ body {
   margin: 0;
   background: #f6f4ef;
   color: var(--ink);
+  font-family: var(--font-sans);
 }
 
 body {
-  font-family: Inter, "Helvetica Neue", Arial, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
