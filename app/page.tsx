@@ -2793,6 +2793,7 @@ function EditableFieldGrid({
   onNavigate,
   baseline,
   linkedKeyForField,
+  showFieldLinks = true,
 }: {
   fields: EditableDetailField[];
   values: Record<string, string>;
@@ -2802,6 +2803,8 @@ function EditableFieldGrid({
   baseline?: Record<string, string>;
   /** Party forms use compact local keys while PDF links use role-specific keys. */
   linkedKeyForField?: (key: string) => string;
+  /** Off inside Parties: a person maps to forms, a first name does not. */
+  showFieldLinks?: boolean;
 }) {
   const [openDestinations, setOpenDestinations] = useState<string | null>(null);
 
@@ -2827,7 +2830,9 @@ function EditableFieldGrid({
     <div className="oq-edit-grid">
       {fields.map((field) => {
         const linkedKey = linkedKeyForField?.(field.key) ?? field.key;
-        const destinations = destinationsForDetailField(linkedKey);
+        const destinations = showFieldLinks
+          ? destinationsForDetailField(linkedKey)
+          : [];
         const inputId = `detail-field-${field.key}`;
         const destinationsId = `${inputId}-destinations`;
         const destinationsOpen = openDestinations === linkedKey;
@@ -3164,6 +3169,126 @@ const detailKeyForPartyField = (partyId: string, fieldKey: string) => {
   return undefined;
 };
 
+/**
+ * Appearance belongs to the person, not to a single field. Two parties can
+ * share a last name, so "which forms carry Nguyen" is a question with no answer
+ * — "which forms carry this party record" always has one. Every slot below is
+ * resolved from the party's own id, and saving the party repopulates the whole
+ * set at once.
+ */
+type PartyAppearance = {
+  form: string;
+  slots: DetailPdfLink[];
+  pages: number[];
+};
+
+const partyDetailKeys = (party: TransactionParty) =>
+  partyFormGroups(party)
+    .flatMap((group) => group.fields)
+    .map((field) => detailKeyForPartyField(party.id, field.key))
+    .filter((key): key is string => Boolean(key));
+
+const partyAppearances = (party: TransactionParty): PartyAppearance[] => {
+  const keys = new Set(partyDetailKeys(party));
+  const byForm = new Map<string, DetailPdfLink[]>();
+  detailPdfLinks.forEach((link) => {
+    if (!link.detailKeys.some((key) => keys.has(key))) return;
+    byForm.set(link.form, [...(byForm.get(link.form) ?? []), link]);
+  });
+  return [...byForm.entries()]
+    .map(([form, slots]) => ({
+      form,
+      slots: [...slots].sort((a, b) => a.page - b.page),
+      pages: [...new Set(slots.map((slot) => slot.page))].sort((a, b) => a - b),
+    }))
+    .sort((a, b) => a.form.localeCompare(b.form));
+};
+
+/** Forms that a set of edited party fields will repopulate on save. */
+const formsTouchedByPartyKeys = (partyId: string, fieldKeys: string[]) => [
+  ...new Set(
+    fieldKeys.flatMap((key) => {
+      const detailKey = detailKeyForPartyField(partyId, key);
+      return detailKey ? linksForDetailField(detailKey).map((link) => link.form) : [];
+    }),
+  ),
+];
+
+function PartyAppearanceList({
+  appearances,
+  onNavigate,
+}: {
+  appearances: PartyAppearance[];
+  onNavigate: (target: DetailPdfLink) => void;
+}) {
+  const [openForm, setOpenForm] = useState<string | null>(null);
+
+  if (appearances.length === 0) {
+    return (
+      <section className="oq-party-appearance is-empty">
+        <b>Not on any form yet</b>
+        <small>This party appears once a form using their role is added.</small>
+      </section>
+    );
+  }
+
+  const slotCount = appearances.reduce(
+    (total, appearance) => total + appearance.slots.length,
+    0,
+  );
+
+  return (
+    <section className="oq-party-appearance">
+      <header>
+        <b>
+          Appears in {appearances.length}{" "}
+          {appearances.length === 1 ? "form" : "forms"}
+        </b>
+        <small>{slotCount} fields repopulate when this party changes</small>
+      </header>
+      <ul>
+        {appearances.map((appearance) => {
+          const expanded = openForm === appearance.form;
+          return (
+            <li key={appearance.form} className={expanded ? "is-open" : ""}>
+              <button
+                type="button"
+                className="oq-appearance-row"
+                aria-expanded={expanded}
+                onClick={() =>
+                  setOpenForm(expanded ? null : appearance.form)
+                }
+              >
+                <em>{appearance.form}</em>
+                <span>
+                  {appearance.slots.length}{" "}
+                  {appearance.slots.length === 1 ? "field" : "fields"}
+                </span>
+                <small>
+                  p.{appearance.pages.join(", ")}
+                </small>
+                <Icon name="chevron" size={13} />
+              </button>
+              {expanded && (
+                <ul className="oq-appearance-slots">
+                  {appearance.slots.map((slot) => (
+                    <li key={`${slot.form}-${slot.page}-${slot.fieldId}`}>
+                      <button type="button" onClick={() => onNavigate(slot)}>
+                        <span>{slot.label}</span>
+                        <small>Page {slot.page}</small>
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </li>
+          );
+        })}
+      </ul>
+    </section>
+  );
+}
+
 function PartiesPanel({
   onAddParty,
   parties,
@@ -3275,6 +3400,7 @@ function PartiesPanel({
                 {!collapsed &&
                   members.map((party) => {
                   const info = partyDisplay(party, values);
+                  const formCount = partyAppearances(party).length;
                   return (
                     <button
                       type="button"
@@ -3286,6 +3412,11 @@ function PartiesPanel({
                       <span>
                         <b>{info.name}</b>
                         <small>{info.role}</small>
+                      </span>
+                      <span className="oq-party-formcount">
+                        {formCount > 0
+                          ? `${formCount} ${formCount === 1 ? "form" : "forms"}`
+                          : "No forms"}
                       </span>
                       <Icon name="chevron" size={16} />
                     </button>
@@ -3300,6 +3431,8 @@ function PartiesPanel({
   }
 
   const effectiveParty = { ...openParty, values: partyValues };
+  const appearances = partyAppearances(effectiveParty);
+  const affectedForms = formsTouchedByPartyKeys(openParty.id, changedKeys);
   const info = partyDisplay(
     effectiveParty,
     openParty.id === "primary" ? partyValues : values,
@@ -3377,6 +3510,10 @@ function PartiesPanel({
             Marked fields came from Create Transaction
           </span>
         </header>
+        <PartyAppearanceList
+          appearances={appearances}
+          onNavigate={onNavigate}
+        />
         {partyFormGroups(effectiveParty).map((group, index) => (
           <div key={group.heading ?? `group-${index}`}>
             {group.heading && (
@@ -3390,6 +3527,7 @@ function PartiesPanel({
               onChange={handlePartyChange}
               onNavigate={onNavigate}
               baseline={openParty.baseline}
+              showFieldLinks={false}
               linkedKeyForField={(key) =>
                 detailKeyForPartyField(openParty.id, key) ?? key
               }
@@ -3399,9 +3537,11 @@ function PartiesPanel({
       </div>
       <footer className="oq-panel-savebar">
         <span aria-live="polite">
-          {hasChanges
-            ? `${changedKeys.length} unsaved ${changedKeys.length === 1 ? "change" : "changes"}`
-            : "All changes saved"}
+          {!hasChanges
+            ? "All changes saved"
+            : affectedForms.length > 0
+              ? `${changedKeys.length} unsaved ${changedKeys.length === 1 ? "change" : "changes"} — repopulates ${affectedForms.join(", ")}`
+              : `${changedKeys.length} unsaved ${changedKeys.length === 1 ? "change" : "changes"}`}
         </span>
         <div>
           <button
@@ -3417,7 +3557,9 @@ function PartiesPanel({
             disabled={!hasChanges}
             onClick={savePartyChanges}
           >
-            Save changes
+            {affectedForms.length > 0
+              ? `Save & update ${affectedForms.length} ${affectedForms.length === 1 ? "form" : "forms"}`
+              : "Save changes"}
           </button>
         </div>
       </footer>
