@@ -38,6 +38,7 @@ type IconName =
   | "history"
   | "check"
   | "grip"
+  | "eye"
   | "info"
   | "assistant"
   | "parties"
@@ -140,6 +141,12 @@ const paths: Record<IconName, React.ReactNode> = {
       <circle cx="16" cy="6" r="1" />
       <circle cx="16" cy="12" r="1" />
       <circle cx="16" cy="18" r="1" />
+    </>
+  ),
+  eye: (
+    <>
+      <path d="M2 12s3.6-6.5 10-6.5S22 12 22 12s-3.6 6.5-10 6.5S2 12 2 12z" />
+      <circle cx="12" cy="12" r="2.75" />
     </>
   ),
   info: (
@@ -639,6 +646,7 @@ const signatureDocumentIsComplete = (
   });
 
 function SignatureDocumentPicker({
+  documents,
   initialDocuments,
   pdfFieldValues,
   checkedFields,
@@ -648,6 +656,7 @@ function SignatureDocumentPicker({
   onEditDocument,
   onUpdateField,
 }: {
+  documents: string[];
   initialDocuments: PdfDocumentCode[];
   pdfFieldValues: Record<string, string>;
   checkedFields: string[];
@@ -681,22 +690,32 @@ function SignatureDocumentPicker({
         ),
     );
 
-  const readyDocumentCodes = signatureDocumentOptions
-    .filter(({ code }) =>
-      signatureDocumentIsComplete(
-        code,
-        pdfFieldValues,
-        checkedFields,
-        requiredFieldIdsByDocument,
-      ),
+  // Every document currently in the transaction, in Workspace order. Ones the
+  // prototype has no field data for are listed but cannot be signed yet.
+  const documentOptions = documents.map(parseTransactionDocument);
+  const signableOptions = documentOptions.filter(({ code }) =>
+    isPdfDocumentCode(code),
+  );
+  const readyDocumentCodes = signableOptions
+    .filter(
+      ({ code }) =>
+        isPdfDocumentCode(code) &&
+        signatureDocumentIsComplete(
+          code,
+          pdfFieldValues,
+          checkedFields,
+          requiredFieldIdsByDocument,
+        ),
     )
-    .map(({ code }) => code);
+    .map(({ code }) => code as PdfDocumentCode);
   const [selectedDocuments, setSelectedDocuments] = useState<Set<PdfDocumentCode>>(
     () =>
       new Set(
         initialDocuments.filter((code) => readyDocumentCodes.includes(code)),
       ),
   );
+  const [previewDocument, setPreviewDocument] =
+    useState<AvailableTransactionForm | null>(null);
   const [editingDocument, setEditingDocument] =
     useState<PdfDocumentCode | null>(null);
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
@@ -707,7 +726,7 @@ function SignatureDocumentPicker({
     readyDocumentCodes.length > 0 &&
     readyDocumentCodes.every((code) => selectedDocuments.has(code));
   const incompleteDocumentCount =
-    signatureDocumentOptions.length - readyDocumentCodes.length;
+    signableOptions.length - readyDocumentCodes.length;
 
   useEffect(() => {
     const previousOverflow = document.body.style.overflow;
@@ -738,9 +757,9 @@ function SignatureDocumentPicker({
 
   const selectionLabel = `${selectedDocuments.size} ready selected · ${incompleteDocumentCount} incomplete`;
   const orderedSelection = () =>
-    signatureDocumentOptions
-      .filter(({ code }) => selectedDocuments.has(code))
-      .map(({ code }) => code);
+    signableOptions
+      .filter(({ code }) => selectedDocuments.has(code as PdfDocumentCode))
+      .map(({ code }) => code as PdfDocumentCode);
 
   const prepareEditorField = (
     documentCode: PdfDocumentCode,
@@ -966,64 +985,143 @@ function SignatureDocumentPicker({
                 </button>
               </div>
 
-              {incompleteDocumentCount > 0 && (
-                <div className="oq-signature-readiness-notice" role="status">
-                  <span aria-hidden="true">!</span>
-                  <span>
-                    <b>Complete required fields before signing</b>
-                    <small>
-                      {incompleteDocumentCount} document{incompleteDocumentCount === 1 ? "" : "s"} blocked until every required field is filled.
-                    </small>
-                  </span>
-                </div>
-              )}
-
               <div className="oq-signature-picker-list" aria-label="Transaction documents">
-                {signatureDocumentOptions.map((document) => {
-                  const selected = selectedDocuments.has(document.code);
-                  const completableFields = completableFieldsFor(document.code);
-                  const missingFields = incompleteFieldsFor(document.code).length;
+                {documentOptions.map((document) => {
+                  const signable = isPdfDocumentCode(document.code);
+                  const previewForm = previewFormFor(
+                    document.code,
+                    document.title,
+                  );
+                  const label = document.entry;
+                  const previewButton = (
+                    <button
+                      type="button"
+                      className="oq-signature-picker-preview"
+                      title={`Preview ${document.code}`}
+                      aria-label={`Preview ${label}`}
+                      onClick={() => setPreviewDocument(previewForm)}
+                    >
+                      <Icon name="eye" size={16} />
+                    </button>
+                  );
+
+                  // Added from the Workspace but with no field model yet — it
+                  // still belongs in the list, it just cannot be signed here.
+                  if (!signable) {
+                    return (
+                      <div
+                        className="oq-signature-picker-item is-unsupported"
+                        key={document.entry}
+                      >
+                        <div className="oq-signature-picker-choice">
+                          <span className="oq-signature-picker-slot" aria-hidden="true" />
+                          <span className="oq-file-icon" aria-hidden="true">
+                            <Icon name="file" size={18} />
+                          </span>
+                          <span className="oq-signature-picker-document">
+                            <b>{label}</b>
+                            <small>
+                              {previewForm.href
+                                ? `${previewForm.pages} page${previewForm.pages === 1 ? "" : "s"}`
+                                : "PDF form"}{" "}
+                              · no fillable fields yet
+                            </small>
+                          </span>
+                          <span className="oq-signature-picker-action is-unsupported">
+                            Preview only
+                          </span>
+                        </div>
+                        {previewButton}
+                      </div>
+                    );
+                  }
+
+                  const code = document.code as PdfDocumentCode;
+                  const selected = selectedDocuments.has(code);
+                  const completableFields = completableFieldsFor(code);
+                  const missingFields = incompleteFieldsFor(code).length;
                   const completedFields = completableFields.length - missingFields;
                   const complete = missingFields === 0;
-                  return (
-                    <div
-                      className={`oq-signature-picker-item ${complete ? "is-ready" : "is-incomplete"} ${selected ? "is-selected" : ""}`}
-                      key={document.code}
-                    >
-                      <button
-                        type="button"
-                        className="oq-signature-picker-choice"
-                        role="checkbox"
-                        aria-checked={selected}
-                        aria-disabled={!complete}
-                        disabled={!complete}
-                        onClick={() => toggleDocument(document.code)}
-                      >
+                  const progress = completableFields.length
+                    ? Math.round(
+                        (completedFields / completableFields.length) * 100,
+                      )
+                    : 100;
+                  // One row, one statement of state: the meter carries "how far",
+                  // the trailing cell carries the only action.
+                  const rowContent = (
+                    <>
+                      {complete ? (
                         <span className="oq-signature-picker-check" aria-hidden="true">
                           {selected && <Icon name="check" size={12} />}
                         </span>
-                        <Icon name="file" size={17} />
-                        <span className="oq-signature-picker-document">
-                          <b>{document.code} — {document.title}</b>
-                          <small>{completedFields}/{completableFields.length} fields completed</small>
-                        </span>
-                        <em className={complete ? "is-complete" : "is-incomplete"}>
-                          {complete ? "Ready to sign" : "Action required"}
-                        </em>
-                      </button>
-                      {!complete && (
-                        <div className="oq-signature-picker-missing">
-                          <span>
-                            {missingFields} field{missingFields === 1 ? "" : "s"} still need{missingFields === 1 ? "s" : ""} attention
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => startEditing(document.code)}
-                          >
-                            Complete fields <span aria-hidden="true">→</span>
-                          </button>
-                        </div>
+                      ) : (
+                        // Blocked documents cannot be picked, so the tick column
+                        // stays empty — the row keeps the Workspace alignment.
+                        <span className="oq-signature-picker-slot" aria-hidden="true" />
                       )}
+                      <span className="oq-file-icon" aria-hidden="true">
+                        <Icon name="file" size={18} />
+                      </span>
+                      <span className="oq-signature-picker-document">
+                        <b>{label}</b>
+                        {complete ? (
+                          <small>
+                            {completableFields.length} field
+                            {completableFields.length === 1 ? "" : "s"} complete
+                          </small>
+                        ) : (
+                          <span className="oq-signature-picker-progress">
+                            <span aria-hidden="true">
+                              <i style={{ width: `${Math.max(4, progress)}%` }} />
+                            </span>
+                            <small>
+                              {missingFields} of {completableFields.length} fields left
+                            </small>
+                          </span>
+                        )}
+                      </span>
+                      <span
+                        className={`oq-signature-picker-action ${complete ? "is-complete" : "is-incomplete"}`}
+                      >
+                        {complete ? (
+                          <>
+                            <Icon name="check" size={13} /> Ready
+                          </>
+                        ) : (
+                          <>
+                            Complete <span aria-hidden="true">→</span>
+                          </>
+                        )}
+                      </span>
+                    </>
+                  );
+                  return (
+                    <div
+                      className={`oq-signature-picker-item ${complete ? "is-ready" : "is-incomplete"} ${selected ? "is-selected" : ""}`}
+                      key={document.entry}
+                    >
+                      {complete ? (
+                        <button
+                          type="button"
+                          className="oq-signature-picker-choice"
+                          role="checkbox"
+                          aria-checked={selected}
+                          onClick={() => toggleDocument(code)}
+                        >
+                          {rowContent}
+                        </button>
+                      ) : (
+                        <button
+                          type="button"
+                          className="oq-signature-picker-choice"
+                          aria-label={`Complete ${missingFields} remaining field${missingFields === 1 ? "" : "s"} in ${label}`}
+                          onClick={() => startEditing(code)}
+                        >
+                          {rowContent}
+                        </button>
+                      )}
+                      {previewButton}
                     </div>
                   );
                 })}
@@ -1047,6 +1145,14 @@ function SignatureDocumentPicker({
           </>
         )}
       </section>
+      {previewDocument && (
+        <PdfPreviewModal
+          form={previewDocument}
+          values={pdfFieldValues}
+          checkedFields={checkedFields}
+          onClose={() => setPreviewDocument(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1130,7 +1236,6 @@ function SignaturePackageFlow({
   onContinue: (document: string) => void;
 }) {
   const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [replaceOriginal, setReplaceOriginal] = useState(true);
   const [includedDocuments, setIncludedDocuments] = useState<PdfDocumentCode[]>(
     selectedDocuments,
   );
@@ -1143,6 +1248,9 @@ function SignaturePackageFlow({
   const [docusignLinkStarted, setDocusignLinkStarted] = useState(false);
   const [signingOrder, setSigningOrder] = useState(false);
   const [recipients, setRecipients] = useState(initialSignatureRecipients);
+  const [recipientDragIndex, setRecipientDragIndex] = useState<number | null>(
+    null,
+  );
   const [addingRecipient, setAddingRecipient] = useState(false);
   const [recipientName, setRecipientName] = useState("");
   const [recipientEmail, setRecipientEmail] = useState("");
@@ -1240,6 +1348,21 @@ function SignaturePackageFlow({
       [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
       return next;
     });
+  };
+
+  // Drag-to-reorder, same grip affordance as the Workspace document list.
+  const dropRecipient = (toIndex: number) => {
+    if (recipientDragIndex === null || recipientDragIndex === toIndex) {
+      setRecipientDragIndex(null);
+      return;
+    }
+    setRecipients((current) => {
+      const next = [...current];
+      const [moved] = next.splice(recipientDragIndex, 1);
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+    setRecipientDragIndex(null);
   };
 
   const commitPreparationTabs = (next: SignaturePreparationTab[]) => {
@@ -1463,15 +1586,6 @@ function SignaturePackageFlow({
 
           <fieldset className="oq-signature-documents">
             <legend>Add another document</legend>
-            <label className="oq-replace-original">
-              <input
-                type="checkbox"
-                checked={replaceOriginal}
-                onChange={(event) => setReplaceOriginal(event.target.checked)}
-              />
-              <span>Replace the original with the completed version</span>
-            </label>
-
             <div
               className="oq-signature-dropzone"
               onDragOver={(event) => event.preventDefault()}
@@ -1591,7 +1705,22 @@ function SignaturePackageFlow({
 
               <ol className="oq-recipient-list">
                 {recipients.map((recipient, index) => (
-                  <li key={recipient.id}>
+                  <li
+                    key={recipient.id}
+                    draggable
+                    className={recipientDragIndex === index ? "is-dragging" : ""}
+                    onDragStart={() => setRecipientDragIndex(index)}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => dropRecipient(index)}
+                    onDragEnd={() => setRecipientDragIndex(null)}
+                  >
+                    <span
+                      className="oq-drag-handle oq-recipient-grip"
+                      title="Drag to reorder"
+                      aria-hidden="true"
+                    >
+                      <Icon name="grip" />
+                    </span>
                     {signingOrder && (
                       <span className="oq-recipient-order-controls">
                         <span className="oq-recipient-order">{index + 1}</span>
@@ -1767,7 +1896,6 @@ function SignaturePackageFlow({
             <dl>
               <div><dt>Documents</dt><dd>{includedDocuments.length + uploadedFiles.length}</dd></div>
               <div><dt>Signature tabs</dt><dd>{placedTabCount}</dd></div>
-              <div><dt>Storage</dt><dd>{replaceOriginal ? "Replace originals" : "Keep both versions"}</dd></div>
             </dl>
             <footer>
               <button
@@ -2852,6 +2980,78 @@ const previewThumbnailSrc = (code: string, page: number) => {
   return `/forms/previews/thumbnails/${normalizedCode}-${String(page).padStart(2, "0")}.png`;
 };
 
+/** Every form the transaction can hold, with the page count and source PDF
+ *  used for previews. Shared by the Workspace list and the signature flow. */
+const transactionFormCatalog: AvailableTransactionForm[] = [
+  {
+    code: "AD",
+    name: "Disclosure Regarding Real Estate Agency Relationship (Buyer)",
+    pages: 3,
+    href: "/forms/AD_Disclosure_Real_Estate_Agency_Relationship_Buyer-1.2.pdf",
+  },
+  {
+    code: "BRBC",
+    name: "Buyer Representation and Broker Compensation Agreement",
+    pages: 13,
+    href: "/forms/BRBC_Buyer_Representation_and_Broker_Compensation_Agreement-1.3.pdf",
+  },
+  {
+    code: "PRBS",
+    name: "Possible Representation of More Than One Buyer or Seller",
+    pages: 1,
+    href: "/forms/PRBS_Possible_Representation_More_Than_One-1.2.pdf",
+  },
+  {
+    code: "ABA",
+    name: "Additional Broker Acknowledgment",
+    pages: 1,
+    href: "",
+  },
+  {
+    code: "ADM",
+    name: "Addendum No. 1",
+    pages: 1,
+    href: "/forms/previews/ADM_Addendum_No_1.pdf",
+  },
+  {
+    code: "RPA",
+    name: "California Residential Purchase Agreement and Joint Escrow Instructions",
+    pages: 25,
+    href: "/forms/previews/RPA_California_Residential_Purchase_Agreement.pdf",
+  },
+];
+
+/** The Workspace stores documents as "[CODE] Title" strings. */
+const parseTransactionDocument = (entry: string) => {
+  const match = entry.match(/^\[([^\]]+)\]\s*(.*)$/);
+  return match
+    ? { entry, code: match[1], title: match[2] }
+    : { entry, code: entry, title: entry };
+};
+
+const isPdfDocumentCode = (code: string): code is PdfDocumentCode =>
+  Object.prototype.hasOwnProperty.call(pdfFieldsByDocument, code);
+
+/** Preview metadata for any document, including ones with no catalog entry. */
+const previewFormFor = (code: string, title: string): AvailableTransactionForm =>
+  transactionFormCatalog.find((form) => form.code === code) ?? {
+    code,
+    name: title,
+    pages: 1,
+    href: "",
+  };
+
+const previewZooms = [
+  "Smaller",
+  "Normal",
+  "Larger",
+  "Fit width",
+  "Fit page",
+] as const;
+type PreviewZoom = (typeof previewZooms)[number];
+const previewZoomSlug = (zoom: PreviewZoom) =>
+  zoom.toLowerCase().replace(" ", "-");
+
 const previewPageImageSrc = (code: string, page: number) => {
   const normalizedCode = code.toLowerCase();
   if (code === "AD") return `/form-pages/ad-${page}.png`;
@@ -2958,28 +3158,82 @@ function PreviewPageRail({
 
 function PdfPreviewModal({
   form,
+  values,
+  checkedFields,
   onClose,
 }: {
   form: AvailableTransactionForm;
+  /** Pass the live field state to preview the document as it will be sent. */
+  values?: Record<string, string>;
+  checkedFields?: string[];
   onClose: () => void;
 }) {
   const [currentPage, setCurrentPage] = useState(1);
+  const [zoom, setZoom] = useState<PreviewZoom>("Fit width");
+  const [zoomOpen, setZoomOpen] = useState(false);
+  const zoomRef = useRef<HTMLDivElement | null>(null);
+
+  // Flattened, read-only rendering of whatever has been filled in so far.
+  const filledFields = useMemo(() => {
+    if (!isPdfDocumentCode(form.code)) return [];
+    const documentCode = form.code;
+    return pdfFieldsByDocument[documentCode]
+      .filter((field) => field.page === currentPage)
+      .flatMap((field) => {
+        if (isSigningDateField(documentCode, field)) return [];
+        const id = `${documentCode}:${field.id}`;
+        if (field.kind === "checkbox") {
+          return checkedFields?.includes(id)
+            ? [{ field, text: "✓", checkbox: true }]
+            : [];
+        }
+        const value = values?.[id] ?? field.value ?? "";
+        return value.trim()
+          ? [
+              {
+                field,
+                text: displayPdfFieldValue(field, value),
+                checkbox: false,
+              },
+            ]
+          : [];
+      });
+  }, [checkedFields, currentPage, form.code, values]);
+
+  useEffect(() => {
+    if (!zoomOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (zoomRef.current?.contains(event.target as Node)) return;
+      setZoomOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown);
+    return () => document.removeEventListener("pointerdown", onPointerDown);
+  }, [zoomOpen]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") onClose();
+      if (event.key !== "Escape") return;
+      if (zoomOpen) {
+        setZoomOpen(false);
+        return;
+      }
+      onClose();
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
-  }, [onClose]);
+  }, [onClose, zoomOpen]);
 
   return (
     <div
       className="oq-preview-backdrop"
       role="presentation"
       onMouseDown={(event) => {
+        // This modal can sit on top of another dialog that closes on backdrop
+        // mousedown — keep every click inside it from reaching that one.
+        event.stopPropagation();
         if (event.target === event.currentTarget) onClose();
       }}
+      onClick={(event) => event.stopPropagation()}
     >
       <section
         className="oq-preview-modal"
@@ -3016,7 +3270,7 @@ function PdfPreviewModal({
               onSelect={setCurrentPage}
             />
           )}
-          <div className="oq-preview-canvas">
+          <div className={`oq-preview-canvas is-zoom-${previewZoomSlug(zoom)}`}>
             {form.href ? (
               <div className="oq-preview-document-page">
                 <Image
@@ -3028,6 +3282,20 @@ function PdfPreviewModal({
                   fetchPriority="high"
                   unoptimized
                 />
+                {filledFields.map(({ field, text, checkbox }) => (
+                  <span
+                    key={field.id}
+                    className={`oq-preview-fill ${checkbox ? "is-checkbox" : ""} ${field.kind === "signature" ? "is-signature" : ""}`}
+                    style={{
+                      left: `${field.left}%`,
+                      top: `${field.top}%`,
+                      width: `${field.width}%`,
+                      height: `${field.height}%`,
+                    }}
+                  >
+                    {text}
+                  </span>
+                ))}
               </div>
             ) : (
               <div className="oq-preview-unavailable" role="status">
@@ -3041,7 +3309,44 @@ function PdfPreviewModal({
           </div>
         </div>
         <footer>
-          <span>{currentPage} / {form.pages} {form.pages === 1 ? "page" : "pages"}</span>
+          <div className="oq-preview-footer-left">
+            {form.href && (
+              <div className="oq-preview-zoom" ref={zoomRef}>
+                <button
+                  type="button"
+                  aria-expanded={zoomOpen}
+                  aria-label={`Zoom: ${zoom}`}
+                  onClick={() => setZoomOpen((open) => !open)}
+                >
+                  {zoom}
+                  <Icon name="chevron" size={14} />
+                </button>
+                {zoomOpen && (
+                  <div className="oq-preview-zoom-menu" role="menu">
+                    {previewZooms.map((option) => (
+                      <button
+                        type="button"
+                        role="menuitemradio"
+                        aria-checked={option === zoom}
+                        className={option === zoom ? "active" : ""}
+                        key={option}
+                        onClick={() => {
+                          setZoom(option);
+                          setZoomOpen(false);
+                        }}
+                      >
+                        {option}
+                        {option === zoom && <Icon name="check" size={14} />}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+            <span>
+              {currentPage} / {form.pages} {form.pages === 1 ? "page" : "pages"}
+            </span>
+          </div>
           <small>Preview only</small>
         </footer>
       </section>
@@ -3051,12 +3356,20 @@ function PdfPreviewModal({
 
 function FormsPanel({
   activeLabel,
+  documents,
+  onDocumentsChange,
+  pdfFieldValues,
+  checkedFields,
   fillStatusByDocument,
   onFeedback,
   onOpen,
   onClose,
 }: {
   activeLabel: string;
+  documents: string[];
+  onDocumentsChange: React.Dispatch<React.SetStateAction<string[]>>;
+  pdfFieldValues: Record<string, string>;
+  checkedFields: string[];
   fillStatusByDocument: Record<
     PdfDocumentCode,
     { filled: number; total: number }
@@ -3071,11 +3384,10 @@ function FormsPanel({
   const [folder, setFolder] = useState("all");
   const [previewForm, setPreviewForm] =
     useState<AvailableTransactionForm | null>(null);
-  const [docs, setDocs] = useState([
-    "[AD] Disclosure Regarding Real Estate Agency Relationship (Buyer)",
-    "[BRBC] Buyer Representation and Broker Compensation Agreement",
-    "[PRBS] Possible Representation of More Than One Buyer or Seller",
-  ]);
+  // The transaction's document list lives in the editor so the signature flow
+  // sees the same set the Workspace shows.
+  const docs = documents;
+  const setDocs = onDocumentsChange;
   const [docStatuses] = useState<Record<string, DocumentStatus>>({
     "[AD] Disclosure Regarding Real Estate Agency Relationship (Buyer)":
       "filled",
@@ -3083,44 +3395,7 @@ function FormsPanel({
     "[PRBS] Possible Representation of More Than One Buyer or Seller":
       "sent_to_docusign",
   });
-  const availableForms: AvailableTransactionForm[] = [
-    {
-      code: "AD",
-      name: "Disclosure Regarding Real Estate Agency Relationship (Buyer)",
-      pages: 3,
-      href: "/forms/AD_Disclosure_Real_Estate_Agency_Relationship_Buyer-1.2.pdf",
-    },
-    {
-      code: "BRBC",
-      name: "Buyer Representation and Broker Compensation Agreement",
-      pages: 13,
-      href: "/forms/BRBC_Buyer_Representation_and_Broker_Compensation_Agreement-1.3.pdf",
-    },
-    {
-      code: "PRBS",
-      name: "Possible Representation of More Than One Buyer or Seller",
-      pages: 1,
-      href: "/forms/PRBS_Possible_Representation_More_Than_One-1.2.pdf",
-    },
-    {
-      code: "ABA",
-      name: "Additional Broker Acknowledgment",
-      pages: 1,
-      href: "",
-    },
-    {
-      code: "ADM",
-      name: "Addendum No. 1",
-      pages: 1,
-      href: "/forms/previews/ADM_Addendum_No_1.pdf",
-    },
-    {
-      code: "RPA",
-      name: "California Residential Purchase Agreement and Joint Escrow Instructions",
-      pages: 25,
-      href: "/forms/previews/RPA_California_Residential_Purchase_Agreement.pdf",
-    },
-  ];
+  const availableForms = transactionFormCatalog;
   const addDocument = (name: string) => {
     setDocs((current) =>
       current.includes(name) ? current : [...current, name],
@@ -3335,6 +3610,8 @@ function FormsPanel({
       {previewForm && (
         <PdfPreviewModal
           form={previewForm}
+          values={pdfFieldValues}
+          checkedFields={checkedFields}
           onClose={() => setPreviewForm(null)}
         />
       )}
@@ -5223,6 +5500,11 @@ export default function Page() {
   const [panelOpen, setPanelOpen] = useState(true);
   const [notice, setNotice] = useState("");
   const [partyOpen, setPartyOpen] = useState(false);
+  const [transactionDocuments, setTransactionDocuments] = useState<string[]>([
+    "[AD] Disclosure Regarding Real Estate Agency Relationship (Buyer)",
+    "[BRBC] Buyer Representation and Broker Compensation Agreement",
+    "[PRBS] Possible Representation of More Than One Buyer or Seller",
+  ]);
   const [signaturePickerOpen, setSignaturePickerOpen] = useState(false);
   const [signatureOpen, setSignatureOpen] = useState(false);
   const [signatureDocuments, setSignatureDocuments] = useState<PdfDocumentCode[]>(
@@ -5449,19 +5731,26 @@ export default function Page() {
     [checkedFields, pdfFieldValues],
   );
 
+  // Only documents that are actually in the transaction right now.
   const signatureReadyDocuments = useMemo(
     () =>
-      signatureDocumentOptions
-        .filter(({ code }) =>
+      transactionDocuments
+        .map((entry) => parseTransactionDocument(entry).code)
+        .filter((code) => isPdfDocumentCode(code))
+        .filter((code) =>
           signatureDocumentIsComplete(
-            code,
+            code as PdfDocumentCode,
             pdfFieldValues,
             checkedFields,
             signatureRequiredFieldIds,
           ),
-        )
-        .map(({ code }) => code),
-    [checkedFields, pdfFieldValues, signatureRequiredFieldIds],
+        ) as PdfDocumentCode[],
+    [
+      checkedFields,
+      pdfFieldValues,
+      signatureRequiredFieldIds,
+      transactionDocuments,
+    ],
   );
 
   const openFirstIncompleteField = (documentCode: PdfDocumentCode) => {
@@ -5920,6 +6209,10 @@ export default function Page() {
             {panel === "forms" ? (
               <FormsPanel
                 activeLabel={pdf.label}
+                documents={transactionDocuments}
+                onDocumentsChange={setTransactionDocuments}
+                pdfFieldValues={pdfFieldValues}
+                checkedFields={checkedFields}
                 fillStatusByDocument={fillStatusByDocument}
                 onFeedback={setNotice}
                 onOpen={openDocument}
@@ -5995,6 +6288,7 @@ export default function Page() {
       {partyOpen && <PartyModal onClose={() => setPartyOpen(false)} />}
       {signaturePickerOpen && (
         <SignatureDocumentPicker
+          documents={transactionDocuments}
           initialDocuments={signatureDocuments}
           pdfFieldValues={pdfFieldValues}
           checkedFields={checkedFields}

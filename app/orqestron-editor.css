@@ -2664,7 +2664,7 @@ button.oq-party-summary.active b {
 }
 .oq-preview-modal {
   display: grid;
-  grid-template-rows: 68px minmax(0, 1fr) 42px;
+  grid-template-rows: 68px minmax(0, 1fr) 54px;
   width: min(1040px, calc(100vw - 48px));
   height: min(840px, calc(100vh - 48px));
   overflow: hidden;
@@ -2832,17 +2832,61 @@ button.oq-party-summary.active b {
   scrollbar-gutter: stable;
 }
 .oq-preview-document-page {
+  position: relative;
+  container-type: inline-size;
   width: min(100%, calc((100dvh - 190px) * 0.772727));
   aspect-ratio: 8.5 / 11;
   margin: 0 auto;
   background: var(--oq-paper);
   box-shadow: 0 2px 8px rgb(56 39 30 / 12%);
 }
+/* Same five steps as the editor toolbar, so the preview zooms the way the
+   canvas outside it does. */
+.oq-preview-canvas.is-zoom-smaller .oq-preview-document-page {
+  width: min(100%, 560px);
+}
+.oq-preview-canvas.is-zoom-normal .oq-preview-document-page {
+  width: min(100%, 720px);
+}
+.oq-preview-canvas.is-zoom-larger .oq-preview-document-page {
+  width: min(100%, 900px);
+}
+.oq-preview-canvas.is-zoom-fit-width .oq-preview-document-page {
+  width: 100%;
+}
+.oq-preview-canvas.is-zoom-fit-page .oq-preview-document-page {
+  width: min(100%, calc((100dvh - 190px) * 0.772727));
+}
 .oq-preview-document-page img {
   display: block;
   width: 100%;
   height: 100%;
   object-fit: contain;
+}
+/* Read-only rendering of the filled values — no input chrome, so the page
+   reads the way it will be sent. */
+.oq-preview-fill {
+  position: absolute;
+  display: grid;
+  overflow: hidden;
+  padding: 0 2px;
+  place-items: center;
+  color: oklch(35% 0.16 255);
+  font-size: clamp(8px, 1.7cqw, 16px);
+  font-weight: var(--fw);
+  line-height: 1;
+  text-align: center;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.oq-preview-fill.is-signature {
+  font-style: italic;
+}
+.oq-preview-fill.is-checkbox {
+  padding: 0;
+  color: var(--oq-accent-dark);
+  font-size: clamp(9px, 1.45cqw, 15px);
 }
 .oq-preview-unavailable {
   display: grid;
@@ -2874,13 +2918,78 @@ button.oq-party-summary.active b {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 18px;
+  gap: 16px;
+  padding: 0 14px 0 12px;
   border-top: 1px solid var(--oq-line);
   color: var(--oq-muted);
   font-size: var(--text-xs);
 }
 .oq-preview-modal > footer small {
   font-size: var(--text-2xs);
+}
+.oq-preview-footer-left {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 14px;
+}
+.oq-preview-zoom {
+  position: relative;
+}
+.oq-preview-zoom > button {
+  display: inline-flex;
+  min-width: 116px;
+  height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 0 10px;
+  border: 1px solid var(--oq-line);
+  border-radius: 8px;
+  background: var(--oq-paper);
+  color: var(--oq-ink);
+  font-size: var(--text-xs);
+  font-weight: var(--fw);
+}
+.oq-preview-zoom > button:hover {
+  border-color: color-mix(in oklch, var(--oq-accent) 32%, var(--oq-line));
+}
+.oq-preview-zoom > button:focus-visible {
+  outline: 2px solid var(--oq-accent);
+  outline-offset: 1px;
+}
+.oq-preview-zoom-menu {
+  position: absolute;
+  z-index: 20;
+  bottom: 42px;
+  left: 0;
+  width: 168px;
+  padding: 6px;
+  border: 1px solid var(--oq-line);
+  border-radius: 10px;
+  background: #fffdfa;
+  box-shadow: 0 12px 32px rgb(56 38 27 / 16%);
+}
+.oq-preview-zoom-menu button {
+  display: flex;
+  width: 100%;
+  height: 36px;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--oq-ink);
+  font-size: var(--text-sm);
+  text-align: left;
+}
+.oq-preview-zoom-menu button:hover {
+  background: var(--oq-soft);
+}
+.oq-preview-zoom-menu button.active {
+  background: var(--oq-accent-soft);
+  color: var(--oq-accent-dark);
 }
 @media (max-width: 700px) {
   .oq-preview-backdrop {
@@ -3599,7 +3708,7 @@ button.oq-party-summary.active b {
 .oq-signature-picker-body {
   min-height: 0;
   overflow: auto;
-  padding: 12px 20px 16px;
+  padding: 18px 20px 24px;
 }
 .oq-signature-picker-instructions {
   display: flex;
@@ -3631,180 +3740,198 @@ button.oq-party-summary.active b {
   cursor: not-allowed;
   opacity: 0.45;
 }
-.oq-signature-readiness-notice {
-  display: grid;
-  grid-template-columns: 28px minmax(0, 1fr);
-  align-items: start;
-  gap: 10px;
-  margin: 4px 0 8px;
-  padding: 10px 12px;
-  border: 1px solid oklch(85% 0.055 80);
-  border-radius: 6px;
-  background: oklch(97% 0.028 80);
-  color: oklch(39% 0.075 65);
-}
-.oq-signature-readiness-notice > span:first-child {
-  display: grid;
-  width: 24px;
-  height: 24px;
-  place-items: center;
-  border-radius: 50%;
-  background: oklch(89% 0.095 78);
-  color: oklch(34% 0.09 62);
-  font-size: var(--text-xs);
-  font-weight: var(--fw);
-}
-.oq-signature-readiness-notice > span:last-child {
-  display: grid;
-  gap: 2px;
-}
-.oq-signature-readiness-notice b {
-  font-size: var(--text-xs);
-}
-.oq-signature-readiness-notice small {
-  color: oklch(43% 0.065 65);
-  font-size: var(--text-2xs);
-  line-height: 1.45;
-}
+/* Spacing mirrors the Workspace document list (.oq-doc-row): 12px block
+   padding, 8px column gap, start-aligned controls, hairline between rows. */
 .oq-signature-picker-list {
   display: grid;
   gap: 0;
   border-top: 0;
 }
+.oq-signature-picker-slot {
+  width: 18px;
+  height: 18px;
+}
 .oq-signature-picker-item {
-  overflow: hidden;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 36px;
+  align-items: start;
+  gap: 8px;
+  padding: 12px 0;
   border-bottom: 1px solid var(--oq-line);
-  border-radius: 0;
   background: transparent;
   transition: background-color 140ms ease;
 }
-.oq-signature-picker-item.is-selected {
-  background: transparent;
+.oq-signature-picker-item:last-child {
+  border-bottom: 0;
 }
-.oq-signature-picker-item.is-incomplete {
-  background: transparent;
+.oq-signature-picker-item:hover {
+  background: color-mix(in srgb, var(--oq-ink) 2.5%, transparent);
+}
+.oq-signature-picker-item.is-selected {
+  background: color-mix(in srgb, var(--oq-accent) 9%, transparent);
 }
 .oq-signature-picker-choice {
   display: grid;
   width: 100%;
-  min-height: 48px;
-  grid-template-columns: 20px 18px minmax(0, 1fr) auto;
+  min-height: 0;
+  grid-template-columns: 18px 24px minmax(0, 1fr) auto;
   align-items: start;
-  gap: 9px;
-  padding: 8px 6px 4px;
+  gap: 8px;
+  padding: 0;
   border: 0;
+  border-radius: 0;
   background: transparent;
   color: var(--oq-ink);
   text-align: left;
-  transition: background-color 140ms ease;
 }
-.oq-signature-picker-choice:hover {
-  background: color-mix(in srgb, var(--oq-ink) 3%, transparent);
-}
-.oq-signature-picker-choice:disabled {
-  cursor: not-allowed;
-}
-.oq-signature-picker-choice:disabled:hover {
-  background: transparent;
+.oq-signature-picker-choice > .oq-file-icon {
+  align-self: start;
+  margin-top: -1px;
 }
 .oq-signature-picker-choice:focus-visible {
   outline: 2px solid var(--oq-accent);
   outline-offset: -2px;
 }
+
+/* Selection box — only ready documents can be picked, so incomplete rows
+   show nothing here rather than a permanently disabled control. */
 .oq-signature-picker-check {
   display: grid;
   width: 18px;
   height: 18px;
   place-items: center;
-  border: 1px solid oklch(84% 0.012 65);
-  border-radius: 4px;
+  justify-self: center;
+  margin-top: 1px;
+  border: 1px solid oklch(82% 0.014 65);
+  border-radius: 5px;
   background: var(--oq-paper);
   color: var(--oq-paper);
-}
-.oq-signature-picker-choice > .oq-signature-picker-check,
-.oq-signature-picker-choice > .fe-icon {
-  margin-top: 1px;
 }
 .oq-signature-picker-item.is-ready.is-selected .oq-signature-picker-check {
   border-color: var(--oq-accent-dark);
   background: var(--oq-accent-dark);
 }
-.oq-signature-picker-item.is-incomplete .oq-signature-picker-check {
-  border-color: oklch(84% 0.05 78);
-  background: oklch(96% 0.02 80);
-}
-.oq-signature-picker-choice > .fe-icon {
-  color: var(--oq-muted);
-}
 .oq-signature-picker-document {
   display: grid;
   min-width: 0;
-  gap: 3px;
+  gap: 5px;
+  /* Same 4px inset .oq-doc-open gives the Workspace row's copy column. */
+  padding-left: 4px;
 }
-.oq-signature-picker-document b,
 .oq-signature-picker-document small {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .oq-signature-picker-document b {
+  display: -webkit-box;
+  overflow: hidden;
+  padding-right: 4px;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
   font-size: var(--text-md);
   font-weight: var(--fw);
-  line-height: 20px;
+  letter-spacing: -0.005em;
+  line-height: 1.4;
 }
 .oq-signature-picker-document small {
   color: var(--oq-muted);
-  font-size: var(--text-2xs);
+  font-size: var(--text-xs);
+  line-height: 1.35;
   font-variant-numeric: tabular-nums;
 }
-.oq-signature-picker-choice em {
-  margin-top: 0;
-  padding: 3px 6px;
-  border-radius: 999px;
-  font-size: var(--text-2xs);
-  font-style: normal;
-  letter-spacing: 0.05em;
-  line-height: 1.25;
-  text-transform: uppercase;
-}
-.oq-signature-picker-choice em.is-complete {
-  background: oklch(94% 0.04 150);
-  color: oklch(42% 0.09 152);
-}
-.oq-signature-picker-choice em.is-incomplete {
-  background: oklch(94% 0.05 80);
-  color: oklch(46% 0.11 66);
-}
-.oq-signature-picker-missing {
+
+/* Progress replaces the "31/33 completed" + "2 still need attention" pair:
+   one meter, one count. */
+.oq-signature-picker-progress {
   display: flex;
-  min-height: 32px;
+  min-width: 0;
   align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 0 6px 6px 62px;
-  color: oklch(43% 0.075 65);
+  gap: 8px;
 }
-.oq-signature-picker-missing > span {
-  font-size: var(--text-2xs);
+.oq-signature-picker-progress > span {
+  overflow: hidden;
+  width: 88px;
+  height: 4px;
+  flex: none;
+  border-radius: 999px;
+  background: oklch(91% 0.018 80);
 }
-.oq-signature-picker-missing > button {
+.oq-signature-picker-progress > span > i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: oklch(72% 0.125 72);
+  transition: width 200ms ease;
+}
+.oq-signature-picker-progress small {
+  overflow: hidden;
+  color: oklch(45% 0.075 65);
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  font-variant-numeric: tabular-nums;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* One trailing cell: the action for blocked rows, the state for ready ones. */
+.oq-signature-picker-action {
   display: inline-flex;
-  min-height: 32px;
+  min-height: 30px;
   align-items: center;
-  gap: 7px;
-  padding-inline: 8px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: oklch(42% 0.105 62);
+  margin-top: -5px;
+  gap: 6px;
+  padding-inline: 10px;
+  border-radius: 8px;
   font-size: var(--text-xs);
   white-space: nowrap;
 }
-.oq-signature-picker-missing > button:hover {
-  background: oklch(94% 0.04 80);
+.oq-signature-picker-action.is-incomplete {
+  background: oklch(95% 0.035 80);
+  color: oklch(42% 0.105 62);
 }
-.oq-signature-picker-missing > button:focus-visible {
-  outline: 2px solid oklch(62% 0.13 66);
+.oq-signature-picker-choice:hover .oq-signature-picker-action.is-incomplete {
+  background: oklch(92% 0.055 78);
+}
+.oq-signature-picker-action.is-complete {
+  padding-inline: 6px;
+  background: transparent;
+  color: oklch(48% 0.085 152);
+}
+/* Added to the transaction but with no field model yet — listed, previewable,
+   not selectable. */
+.oq-signature-picker-action.is-unsupported {
+  padding-inline: 6px;
+  background: transparent;
+  color: var(--oq-muted);
+}
+.oq-signature-picker-item.is-unsupported .oq-signature-picker-document b {
+  color: var(--oq-ink);
+}
+.oq-signature-picker-item.is-unsupported .oq-file-icon {
+  color: var(--oq-muted);
+}
+
+.oq-signature-picker-preview {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  margin-top: -8px;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--oq-muted);
+  transition:
+    background-color 140ms ease,
+    color 140ms ease;
+}
+.oq-signature-picker-preview:hover {
+  background: var(--oq-soft);
+  color: var(--oq-ink);
+}
+.oq-signature-picker-preview:focus-visible {
+  outline: 2px solid var(--oq-accent);
   outline-offset: 1px;
 }
 
@@ -4085,8 +4212,8 @@ button.oq-party-summary.active b {
 }
 .oq-recipient-body {
   display: grid;
-  gap: 12px;
-  padding: 20px 24px 0;
+  gap: 18px;
+  padding: 22px 24px 0;
 }
 .oq-recipient-heading {
   display: flex;
@@ -4158,20 +4285,35 @@ button.oq-party-summary.active b {
 }
 .oq-recipient-list > li {
   display: grid;
-  min-height: 62px;
-  grid-template-columns: auto 34px minmax(0, 1fr) 148px 36px;
+  min-height: 76px;
+  grid-template-columns: 18px auto 36px minmax(0, 1fr) 152px 36px;
   align-items: center;
-  gap: 10px;
-  padding: 8px 0;
+  gap: 14px;
+  padding: 14px 4px;
   border-bottom: 1px solid var(--oq-line);
   border-radius: 0;
   background: transparent;
+  transition:
+    opacity 140ms ease,
+    background-color 140ms ease;
 }
 .oq-recipient-list > li:first-child {
   border-top: 1px solid var(--oq-line);
 }
 .oq-recipient-list > li:not(:has(.oq-recipient-order)) {
-  grid-template-columns: 34px minmax(0, 1fr) 148px 36px;
+  grid-template-columns: 18px 36px minmax(0, 1fr) 152px 36px;
+}
+.oq-recipient-list > li.is-dragging {
+  opacity: 0.55;
+}
+.oq-recipient-grip {
+  height: 100%;
+  align-self: center;
+  color: oklch(70% 0.012 65);
+  transition: color 140ms ease;
+}
+.oq-recipient-list > li:hover .oq-recipient-grip {
+  color: var(--oq-muted);
 }
 .oq-recipient-order {
   display: grid;
@@ -4185,8 +4327,8 @@ button.oq-party-summary.active b {
 }
 .oq-recipient-avatar {
   display: grid;
-  width: 34px;
-  height: 34px;
+  width: 36px;
+  height: 36px;
   place-items: center;
   border-radius: 50%;
   font-size: var(--text-xs);
@@ -4203,13 +4345,13 @@ button.oq-party-summary.active b {
 .oq-recipient-copy {
   display: grid;
   min-width: 0;
-  gap: 2px;
+  gap: 5px;
 }
 .oq-recipient-copy > span {
   display: flex;
   min-width: 0;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 .oq-recipient-copy b,
 .oq-recipient-copy small {
@@ -4222,12 +4364,17 @@ button.oq-party-summary.active b {
 }
 .oq-recipient-copy em {
   flex: none;
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
-  color: var(--oq-muted);
+  padding: 2px 8px;
+  border: 1px solid var(--oq-line);
+  border-radius: 999px;
+  background: var(--oq-soft);
+  color: var(--oq-ink);
   font-size: var(--text-2xs);
   font-style: normal;
+  font-weight: var(--fw);
+  letter-spacing: 0.01em;
+  line-height: 1.35;
+  white-space: nowrap;
 }
 .oq-recipient-copy small {
   color: var(--oq-muted);
@@ -4235,7 +4382,7 @@ button.oq-party-summary.active b {
 }
 .oq-recipient-list select {
   width: 100%;
-  height: 36px;
+  height: 38px;
   padding: 0 30px 0 11px;
   border: 1px solid var(--oq-line);
   border-radius: 6px;
@@ -4346,16 +4493,16 @@ button.oq-party-summary.active b {
   }
   .oq-recipient-list > li,
   .oq-recipient-list > li:not(:has(.oq-recipient-order)) {
-    grid-template-columns: auto 34px minmax(0, 1fr) 44px;
+    grid-template-columns: 18px auto 34px minmax(0, 1fr) 44px;
   }
   .oq-recipient-list > li:not(:has(.oq-recipient-order)) {
-    grid-template-columns: 34px minmax(0, 1fr) 44px;
+    grid-template-columns: 18px 34px minmax(0, 1fr) 44px;
   }
   .oq-recipient-list select {
-    grid-column: 2 / -1;
+    grid-column: 3 / -1;
   }
   .oq-recipient-list > li:not(:has(.oq-recipient-order)) select {
-    grid-column: 1 / -1;
+    grid-column: 2 / -1;
   }
   .oq-add-recipient-form {
     grid-template-columns: minmax(0, 1fr);
@@ -4384,13 +4531,16 @@ button.oq-party-summary.active b {
     align-items: flex-start;
   }
   .oq-signature-picker-choice {
-    grid-template-columns: 20px 18px minmax(0, 1fr);
+    grid-template-columns: 18px 24px minmax(0, 1fr);
+    gap: 10px;
+    row-gap: 8px;
   }
-  .oq-signature-picker-choice em {
-    display: none;
+  .oq-signature-picker-action {
+    grid-column: 4 / -1;
+    justify-self: start;
   }
-  .oq-signature-picker-missing {
-    padding-left: 62px;
+  .oq-signature-picker-progress > span {
+    width: 64px;
   }
   .oq-signature-picker > footer {
     align-items: stretch;
@@ -4603,21 +4753,6 @@ button.oq-party-summary.active b {
 .oq-signature-documents {
   padding-bottom: 4px !important;
 }
-.oq-replace-original {
-  display: flex;
-  min-height: 36px;
-  align-items: center;
-  gap: 10px;
-  margin-bottom: 12px;
-  cursor: pointer;
-  font-size: var(--text-sm);
-}
-.oq-replace-original input {
-  width: 18px;
-  height: 18px;
-  margin: 0;
-  accent-color: var(--oq-accent-dark);
-}
 .oq-signature-dropzone {
   display: grid;
   gap: 10px;
@@ -4782,6 +4917,17 @@ button.oq-party-summary.active b {
 .oq-recipient-order-controls > span:last-child {
   display: flex;
   gap: 2px;
+  opacity: 0;
+  transition: opacity 140ms ease;
+}
+.oq-recipient-list > li:hover .oq-recipient-order-controls > span:last-child,
+.oq-recipient-order-controls:focus-within > span:last-child {
+  opacity: 1;
+}
+@media (hover: none) {
+  .oq-recipient-order-controls > span:last-child {
+    opacity: 1;
+  }
 }
 .oq-recipient-order-controls button {
   display: grid;
@@ -5713,7 +5859,6 @@ button.oq-party-summary.active b {
   }
   .oq-signature-card > footer button,
   .oq-link-provider,
-  .oq-replace-original,
   .oq-signature-dropzone select,
   .oq-recipient-list select,
   .oq-recipient-remove,
@@ -6049,12 +6194,19 @@ button.oq-party-summary.active b {
   font-size: var(--text-xs);
 }
 
+/* One chevron for every dropdown: same 14px glyph, same 1.8 stroke and the
+   same muted tone the Icon component renders, with room so labels never run
+   into it. */
 .oq-editor select {
   appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b6058' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 9l5 5 5-5'/%3E%3C/svg%3E");
+  padding-right: 32px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236b6058' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M7 9l5 5 5-5'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
-  background-position: right 10px center;
-  background-size: 13px 13px;
+  background-position: right 11px center;
+  background-size: 14px 14px;
+}
+.oq-preview-zoom > button .fe-icon {
+  color: #6b6058;
 }
 .oq-editor .oq-edit-control select {
   padding-right: 30px;
@@ -6288,14 +6440,14 @@ button.oq-party-summary.active b {
 
 .oq-party-appearance {
   margin: 0 0 20px;
-  padding: 12px 13px;
+  padding: 14px;
   border: 1px solid var(--oq-line);
-  border-radius: 9px;
+  border-radius: 10px;
   background: var(--oq-soft);
 }
 .oq-party-appearance.is-empty {
   display: grid;
-  gap: 3px;
+  gap: 4px;
 }
 .oq-party-appearance.is-empty b,
 .oq-party-appearance > header b {
@@ -6310,35 +6462,46 @@ button.oq-party-summary.active b {
 }
 .oq-party-appearance > header {
   display: grid;
-  gap: 2px;
-  margin-bottom: 9px;
+  gap: 3px;
+  margin-bottom: 12px;
 }
 .oq-party-appearance ul {
   display: grid;
-  gap: 4px;
+  gap: 6px;
   margin: 0;
   padding: 0;
   list-style: none;
 }
+
+/* An open form keeps its header row and its fields inside ONE white block,
+   so the list keeps a single 6px rhythm instead of drifting when expanded. */
+.oq-party-appearance > ul > li {
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: var(--oq-paper);
+  transition: border-color 140ms ease;
+}
+.oq-party-appearance > ul > li.is-open {
+  border-color: #ddd1c8;
+}
 .oq-appearance-row {
   display: grid;
   width: 100%;
-  grid-template-columns: 3.5rem minmax(0, 1fr) auto 13px;
-  gap: 9px;
+  min-height: 36px;
+  grid-template-columns: 3.25rem minmax(0, 1fr) auto 13px;
+  gap: 10px;
   align-items: center;
-  padding: 7px 9px;
-  border: 1px solid transparent;
-  border-radius: 7px;
-  background: var(--oq-paper);
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
   color: inherit;
   text-align: left;
-  transition:
-    border-color 140ms ease,
-    background-color 140ms ease;
+  transition: background-color 140ms ease;
 }
 .oq-appearance-row:hover,
 .oq-appearance-row:focus-visible {
-  border-color: #ddd1c8;
+  background: color-mix(in srgb, var(--oq-ink) 3%, transparent);
 }
 .oq-appearance-row em {
   color: var(--oq-ink);
@@ -6368,19 +6531,19 @@ button.oq-party-summary.active b {
   transform: rotate(0deg);
 }
 .oq-appearance-slots {
-  gap: 0;
-  margin: 2px 0 6px;
-  padding-left: 10px;
+  gap: 2px;
+  margin: 0 10px 8px 20px;
+  padding: 0 0 0 10px;
   border-left: 1px solid var(--oq-line);
-  margin-left: 13px;
 }
 .oq-appearance-slots button {
   display: grid;
   width: 100%;
+  min-height: 30px;
   grid-template-columns: minmax(0, 1fr) auto;
-  gap: 9px;
-  align-items: baseline;
-  padding: 5px 7px;
+  gap: 10px;
+  align-items: center;
+  padding: 6px 8px;
   border: 0;
   border-radius: 6px;
   background: transparent;
@@ -6404,7 +6567,7 @@ button.oq-party-summary.active b {
 
 @container (max-width: 340px) {
   .oq-appearance-row {
-    grid-template-columns: 3.5rem minmax(0, 1fr) 13px;
+    grid-template-columns: 3.25rem minmax(0, 1fr) 13px;
   }
   .oq-appearance-row > small {
     display: none;
