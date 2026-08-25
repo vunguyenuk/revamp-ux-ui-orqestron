@@ -556,20 +556,621 @@ function PartyModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+type SignatureDocumentOption = {
+  code: PdfDocumentCode;
+  title: string;
+};
+
+const signatureDocumentOptions: SignatureDocumentOption[] = [
+  {
+    code: "AD",
+    title: "Disclosure Regarding Real Estate Agency Relationship (Buyer)",
+  },
+  {
+    code: "BRBC",
+    title: "Buyer Representation and Broker Compensation Agreement",
+  },
+  {
+    code: "PRBS",
+    title: "Possible Representation of More Than One Buyer or Seller",
+  },
+];
+
+type SignatureRequiredFieldIds = Record<PdfDocumentCode, string[]>;
+
+const signatureDemoMissingFieldCount: Record<PdfDocumentCode, number> = {
+  AD: 2,
+  BRBC: 2,
+  PRBS: 1,
+};
+
+const signatureFieldIsComplete = (
+  documentCode: PdfDocumentCode,
+  field: PdfFieldDefinition,
+  pdfFieldValues: Record<string, string>,
+  checkedFields: string[],
+) => {
+  const id = `${documentCode}:${field.id}`;
+  if (field.kind === "checkbox") return checkedFields.includes(id);
+  return Boolean((pdfFieldValues[id] ?? field.value ?? "").trim());
+};
+
+const buildSignatureDemoRequiredFields = (
+  pdfFieldValues: Record<string, string>,
+  checkedFields: string[],
+) =>
+  Object.fromEntries(
+    (Object.keys(pdfFieldsByDocument) as PdfDocumentCode[]).map((code) => [
+      code,
+      pdfFieldsByDocument[code]
+        .filter((field) => !isSigningDateField(code, field))
+        .filter(
+          (field) =>
+            !signatureFieldIsComplete(
+              code,
+              field,
+              pdfFieldValues,
+              checkedFields,
+            ),
+        )
+        .slice(0, signatureDemoMissingFieldCount[code])
+        .map((field) => field.id),
+    ]),
+  ) as SignatureRequiredFieldIds;
+
+const signatureDocumentIsComplete = (
+  documentCode: PdfDocumentCode,
+  pdfFieldValues: Record<string, string>,
+  checkedFields: string[],
+  requiredFieldIdsByDocument: SignatureRequiredFieldIds,
+) =>
+  requiredFieldIdsByDocument[documentCode].every((fieldId) => {
+    const field = pdfFieldsByDocument[documentCode].find(
+      (candidate) => candidate.id === fieldId,
+    );
+    return field
+      ? signatureFieldIsComplete(
+          documentCode,
+          field,
+          pdfFieldValues,
+          checkedFields,
+        )
+      : true;
+  });
+
+function SignatureDocumentPicker({
+  initialDocuments,
+  pdfFieldValues,
+  checkedFields,
+  requiredFieldIdsByDocument,
+  onClose,
+  onContinue,
+  onEditDocument,
+  onUpdateField,
+}: {
+  initialDocuments: PdfDocumentCode[];
+  pdfFieldValues: Record<string, string>;
+  checkedFields: string[];
+  requiredFieldIdsByDocument: SignatureRequiredFieldIds;
+  onClose: () => void;
+  onContinue: (documents: PdfDocumentCode[]) => void;
+  onEditDocument: (
+    document: PdfDocumentCode,
+    selectedDocuments: PdfDocumentCode[],
+  ) => void;
+  onUpdateField: (
+    document: PdfDocumentCode,
+    field: PdfFieldDefinition,
+    value: string | boolean,
+  ) => void;
+}) {
+  const completableFieldsFor = (documentCode: PdfDocumentCode) =>
+    pdfFieldsByDocument[documentCode].filter(
+      (field) => !isSigningDateField(documentCode, field),
+    );
+
+  const incompleteFieldsFor = (documentCode: PdfDocumentCode) =>
+    completableFieldsFor(documentCode).filter(
+      (field) =>
+        requiredFieldIdsByDocument[documentCode].includes(field.id) &&
+        !signatureFieldIsComplete(
+          documentCode,
+          field,
+          pdfFieldValues,
+          checkedFields,
+        ),
+    );
+
+  const readyDocumentCodes = signatureDocumentOptions
+    .filter(({ code }) =>
+      signatureDocumentIsComplete(
+        code,
+        pdfFieldValues,
+        checkedFields,
+        requiredFieldIdsByDocument,
+      ),
+    )
+    .map(({ code }) => code);
+  const [selectedDocuments, setSelectedDocuments] = useState<Set<PdfDocumentCode>>(
+    () =>
+      new Set(
+        initialDocuments.filter((code) => readyDocumentCodes.includes(code)),
+      ),
+  );
+  const [editingDocument, setEditingDocument] =
+    useState<PdfDocumentCode | null>(null);
+  const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
+  const [fieldDraft, setFieldDraft] = useState("");
+  const [checkboxDraft, setCheckboxDraft] = useState(false);
+  const headingRef = useRef<HTMLHeadingElement | null>(null);
+  const allReadySelected =
+    readyDocumentCodes.length > 0 &&
+    readyDocumentCodes.every((code) => selectedDocuments.has(code));
+  const incompleteDocumentCount =
+    signatureDocumentOptions.length - readyDocumentCodes.length;
+
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    headingRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", onKeyDown);
+    };
+  }, [onClose]);
+
+  const toggleDocument = (code: PdfDocumentCode) => {
+    if (!readyDocumentCodes.includes(code)) {
+      startEditing(code);
+      return;
+    }
+    setSelectedDocuments((current) => {
+      const next = new Set(current);
+      if (next.has(code)) next.delete(code);
+      else next.add(code);
+      return next;
+    });
+  };
+
+  const selectionLabel = `${selectedDocuments.size} ready selected · ${incompleteDocumentCount} incomplete`;
+  const orderedSelection = () =>
+    signatureDocumentOptions
+      .filter(({ code }) => selectedDocuments.has(code))
+      .map(({ code }) => code);
+
+  const prepareEditorField = (
+    documentCode: PdfDocumentCode,
+    field: PdfFieldDefinition,
+  ) => {
+    const id = `${documentCode}:${field.id}`;
+    setEditingFieldId(field.id);
+    setFieldDraft(pdfFieldValues[id] ?? field.value ?? "");
+    setCheckboxDraft(checkedFields.includes(id));
+  };
+
+  const startEditing = (documentCode: PdfDocumentCode) => {
+    const firstField = incompleteFieldsFor(documentCode)[0];
+    if (!firstField) return;
+    setEditingDocument(documentCode);
+    prepareEditorField(documentCode, firstField);
+  };
+
+  const editingFields = editingDocument
+    ? incompleteFieldsFor(editingDocument)
+    : [];
+  const editingField =
+    editingFields.find((field) => field.id === editingFieldId) ??
+    editingFields[0];
+  const editingOption = signatureDocumentOptions.find(
+    ({ code }) => code === editingDocument,
+  );
+  const editingTotal = editingDocument
+    ? completableFieldsFor(editingDocument).length
+    : 0;
+  const editingCompleted = editingTotal - editingFields.length;
+
+  const moveToField = (direction: 1 | -1) => {
+    if (!editingDocument || !editingField || editingFields.length < 2) return;
+    const currentIndex = editingFields.findIndex(
+      (field) => field.id === editingField.id,
+    );
+    const nextIndex =
+      (currentIndex + direction + editingFields.length) % editingFields.length;
+    prepareEditorField(editingDocument, editingFields[nextIndex]);
+  };
+
+  const saveEditorField = () => {
+    if (!editingDocument || !editingField) return;
+    onUpdateField(
+      editingDocument,
+      editingField,
+      editingField.kind === "checkbox" ? checkboxDraft : fieldDraft.trim(),
+    );
+    const remainingFields = editingFields.filter(
+      (field) => field.id !== editingField.id,
+    );
+    if (remainingFields.length === 0) {
+      setEditingDocument(null);
+      setEditingFieldId(null);
+      return;
+    }
+    const currentIndex = editingFields.findIndex(
+      (field) => field.id === editingField.id,
+    );
+    prepareEditorField(
+      editingDocument,
+      remainingFields[currentIndex % remainingFields.length],
+    );
+  };
+
+  return (
+    <div className="oq-signature-picker-backdrop" onMouseDown={onClose}>
+      <section
+        className="oq-signature-picker"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="signature-picker-title"
+        onMouseDown={(event) => event.stopPropagation()}
+      >
+        <header>
+          <div>
+            <h2 id="signature-picker-title" tabIndex={-1} ref={headingRef}>
+              Send for Signature
+            </h2>
+            <p>2458 Maplewood Ave 12B</p>
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close document selection">
+            <Icon name="close" size={17} />
+          </button>
+        </header>
+
+        {editingDocument && editingField ? (
+          <>
+            <div className="oq-signature-picker-body oq-inline-field-editor">
+              <button
+                type="button"
+                className="oq-inline-editor-back"
+                onClick={() => setEditingDocument(null)}
+              >
+                <span aria-hidden="true">←</span> Documents
+              </button>
+              <div className="oq-inline-editor-document">
+                <span className="oq-file-icon" aria-hidden="true">
+                  <Icon name="file" size={17} />
+                </span>
+                <span>
+                  <b>{editingDocument} — {editingOption?.title}</b>
+                  <small>{editingFields.length} fields still need attention</small>
+                </span>
+              </div>
+              <div className="oq-inline-editor-progress" aria-hidden="true">
+                <span
+                  style={{
+                    width: `${Math.max(
+                      4,
+                      (editingCompleted / editingTotal) * 100,
+                    )}%`,
+                  }}
+                />
+              </div>
+              <section className="oq-inline-editor-field">
+                <header>
+                  <span>Next incomplete field</span>
+                  <small>Page {editingField.page}</small>
+                </header>
+                <h3>{pdfFieldLabel(editingField)}</h3>
+                {editingField.kind === "checkbox" ? (
+                  <button
+                    type="button"
+                    className={`oq-inline-checkbox ${checkboxDraft ? "is-checked" : ""}`}
+                    role="checkbox"
+                    aria-checked={checkboxDraft}
+                    onClick={() => setCheckboxDraft((current) => !current)}
+                  >
+                    <span aria-hidden="true">
+                      {checkboxDraft && <Icon name="check" size={14} />}
+                    </span>
+                    <span>
+                      <b>{checkboxDraft ? "Selected" : "Not selected"}</b>
+                      <small>Click to change this field</small>
+                    </span>
+                  </button>
+                ) : (
+                  <label>
+                    <span>
+                      {editingField.kind === "signature"
+                        ? "Signer’s full name"
+                        : "Value"}
+                    </span>
+                    <input
+                      autoFocus
+                      type={editingField.kind === "date" ? "date" : "text"}
+                      value={fieldDraft}
+                      placeholder={
+                        editingField.kind === "signature"
+                          ? "Enter the person who will sign"
+                          : "Enter value"
+                      }
+                      onChange={(event) => setFieldDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter" && fieldDraft.trim()) {
+                          event.preventDefault();
+                          saveEditorField();
+                        }
+                      }}
+                    />
+                  </label>
+                )}
+                {editingField.kind === "signature" && (
+                  <p>The signature itself will be collected by Docusign.</p>
+                )}
+              </section>
+              <button
+                type="button"
+                className="oq-inline-open-pdf"
+                onClick={() =>
+                  onEditDocument(editingDocument, orderedSelection())
+                }
+              >
+                Open this field in the PDF <span aria-hidden="true">↗</span>
+              </button>
+            </div>
+            <footer className="oq-inline-editor-footer">
+              <span aria-live="polite">
+                {editingFields.length} remaining in {editingDocument}
+              </span>
+              <div>
+                <button
+                  type="button"
+                  disabled={editingFields.length < 2}
+                  onClick={() => moveToField(1)}
+                >
+                  Skip
+                </button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={
+                    editingField.kind === "checkbox"
+                      ? !checkboxDraft
+                      : !fieldDraft.trim()
+                  }
+                  onClick={saveEditorField}
+                >
+                  Save &amp; next <span aria-hidden="true">→</span>
+                </button>
+              </div>
+            </footer>
+          </>
+        ) : (
+          <>
+            <div className="oq-signature-picker-body">
+              <div className="oq-signature-picker-instructions">
+                <p>Only completed documents can be included in a signature request.</p>
+                <button
+                  type="button"
+                  disabled={readyDocumentCodes.length === 0}
+                  onClick={() =>
+                    setSelectedDocuments(
+                      allReadySelected
+                        ? new Set()
+                        : new Set(readyDocumentCodes),
+                    )
+                  }
+                >
+                  {allReadySelected ? "Clear selection" : "Select ready"}
+                </button>
+              </div>
+
+              {incompleteDocumentCount > 0 && (
+                <div className="oq-signature-readiness-notice" role="status">
+                  <span aria-hidden="true">!</span>
+                  <span>
+                    <b>Complete required fields before signing</b>
+                    <small>
+                      {incompleteDocumentCount} document{incompleteDocumentCount === 1 ? "" : "s"} blocked until every required field is filled.
+                    </small>
+                  </span>
+                </div>
+              )}
+
+              <div className="oq-signature-picker-list" aria-label="Transaction documents">
+                {signatureDocumentOptions.map((document) => {
+                  const selected = selectedDocuments.has(document.code);
+                  const completableFields = completableFieldsFor(document.code);
+                  const missingFields = incompleteFieldsFor(document.code).length;
+                  const completedFields = completableFields.length - missingFields;
+                  const complete = missingFields === 0;
+                  return (
+                    <div
+                      className={`oq-signature-picker-item ${complete ? "is-ready" : "is-incomplete"} ${selected ? "is-selected" : ""}`}
+                      key={document.code}
+                    >
+                      <button
+                        type="button"
+                        className="oq-signature-picker-choice"
+                        role="checkbox"
+                        aria-checked={selected}
+                        aria-disabled={!complete}
+                        disabled={!complete}
+                        onClick={() => toggleDocument(document.code)}
+                      >
+                        <span className="oq-signature-picker-check" aria-hidden="true">
+                          {selected && <Icon name="check" size={12} />}
+                        </span>
+                        <Icon name="file" size={17} />
+                        <span className="oq-signature-picker-document">
+                          <b>{document.code} — {document.title}</b>
+                          <small>{completedFields}/{completableFields.length} fields completed</small>
+                        </span>
+                        <em className={complete ? "is-complete" : "is-incomplete"}>
+                          {complete ? "Ready to sign" : "Action required"}
+                        </em>
+                      </button>
+                      {!complete && (
+                        <div className="oq-signature-picker-missing">
+                          <span>
+                            {missingFields} field{missingFields === 1 ? "" : "s"} still need{missingFields === 1 ? "s" : ""} attention
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => startEditing(document.code)}
+                          >
+                            Complete fields <span aria-hidden="true">→</span>
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <footer>
+              <span aria-live="polite">{selectionLabel}</span>
+              <div>
+                <button type="button" onClick={onClose}>Cancel</button>
+                <button
+                  type="button"
+                  className="primary"
+                  disabled={selectedDocuments.size === 0}
+                  onClick={() => onContinue(orderedSelection())}
+                >
+                  Continue <span aria-hidden="true">→</span>
+                </button>
+              </div>
+            </footer>
+          </>
+        )}
+      </section>
+    </div>
+  );
+}
+
+type SignatureRecipient = {
+  id: string;
+  name: string;
+  email: string;
+  role: string;
+  delivery: "sign" | "copy" | "in_person";
+};
+
+const initialSignatureRecipients: SignatureRecipient[] = [
+  {
+    id: "buyer-1",
+    name: "Alexis Romero",
+    email: "alexis.romero@example.com",
+    role: "Buyer 1",
+    delivery: "sign",
+  },
+  {
+    id: "seller",
+    name: "Dana Whitfield",
+    email: "dana.whitfield@example.com",
+    role: "Seller",
+    delivery: "sign",
+  },
+  {
+    id: "listing-agent",
+    name: "Priya Raman",
+    email: "priya.raman@example.com",
+    role: "Listing Agent",
+    delivery: "sign",
+  },
+  {
+    id: "buyer-agent",
+    name: "Vu Nguyen",
+    email: "vu.nguyen@c0x12c.com",
+    role: "Buyer’s Agent",
+    delivery: "copy",
+  },
+];
+
+const recipientInitials = (name: string) =>
+  name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("") || "?";
+
+type SignatureTabKind = "signature" | "initials" | "date";
+
+type SignaturePreparationTab = {
+  id: string;
+  recipientId: string;
+  kind: SignatureTabKind;
+  documentCode: PdfDocumentCode;
+  page: number;
+  x: number;
+  y: number;
+};
+
+const signatureTabLabel: Record<SignatureTabKind, string> = {
+  signature: "Signature",
+  initials: "Initials",
+  date: "Date signed",
+};
+
 function SignaturePackageFlow({
   currentDocumentCode,
+  selectedDocuments,
+  eligibleDocuments,
   onClose,
   onContinue,
 }: {
   currentDocumentCode: string;
+  selectedDocuments: PdfDocumentCode[];
+  eligibleDocuments: PdfDocumentCode[];
   onClose: () => void;
   onContinue: (document: string) => void;
 }) {
+  const [step, setStep] = useState<1 | 2 | 3>(1);
   const [replaceOriginal, setReplaceOriginal] = useState(true);
+  const [includedDocuments, setIncludedDocuments] = useState<PdfDocumentCode[]>(
+    selectedDocuments,
+  );
   const [transactionDocument, setTransactionDocument] = useState(
-    currentDocumentCode,
+    signatureDocumentOptions.find(
+      ({ code }) => !selectedDocuments.includes(code),
+    )?.code ?? selectedDocuments[0] ?? currentDocumentCode,
   );
   const [uploadedFiles, setUploadedFiles] = useState<string[]>([]);
+  const [docusignLinkStarted, setDocusignLinkStarted] = useState(false);
+  const [signingOrder, setSigningOrder] = useState(false);
+  const [recipients, setRecipients] = useState(initialSignatureRecipients);
+  const [addingRecipient, setAddingRecipient] = useState(false);
+  const [recipientName, setRecipientName] = useState("");
+  const [recipientEmail, setRecipientEmail] = useState("");
+  const [autoAddTabs, setAutoAddTabs] = useState(true);
+  const [preparationTabs, setPreparationTabs] = useState<
+    SignaturePreparationTab[]
+  >([]);
+  const [tabHistory, setTabHistory] = useState<SignaturePreparationTab[][]>([]);
+  const [redoTabHistory, setRedoTabHistory] = useState<
+    SignaturePreparationTab[][]
+  >([]);
+  const [activePreparationDocument, setActivePreparationDocument] =
+    useState<PdfDocumentCode>(
+      selectedDocuments[0] ?? (currentDocumentCode as PdfDocumentCode),
+    );
+  const [activePreparationPage, setActivePreparationPage] = useState(1);
+  const [activePreparationRecipient, setActivePreparationRecipient] = useState(
+    initialSignatureRecipients.find(({ delivery }) => delivery !== "copy")?.id ??
+      "",
+  );
+  const [pendingTabKind, setPendingTabKind] =
+    useState<SignatureTabKind | null>(null);
+  const [preparationZoom, setPreparationZoom] = useState("fit");
+  const preparationPageRefs = useRef<Record<string, HTMLDivElement | null>>({});
+  const nextPreparationTabId = useRef(0);
+  const [sendState, setSendState] = useState<"review" | "sending" | "sent">(
+    "review",
+  );
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -584,6 +1185,193 @@ function SignaturePackageFlow({
     setUploadedFiles((current) => [
       ...new Set([...current, ...Array.from(files).map((file) => file.name)]),
     ]);
+  };
+
+  const signingRecipients = recipients.filter(
+    ({ delivery }) => delivery !== "copy",
+  );
+  const detectedTabCount = includedDocuments.reduce(
+    (total, code) =>
+      total +
+      pdfFieldsByDocument[code].filter((field) => field.kind === "signature")
+        .length,
+    0,
+  );
+  const placedTabCount = preparationTabs.length;
+  const availableTransactionDocuments = signatureDocumentOptions.filter(
+    ({ code }) =>
+      eligibleDocuments.includes(code) && !includedDocuments.includes(code),
+  );
+  const transactionDocumentSelection =
+    availableTransactionDocuments.find(
+      ({ code }) => code === transactionDocument,
+    )?.code ?? availableTransactionDocuments[0]?.code ?? "";
+  const recipientEmailValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(
+    recipientEmail.trim(),
+  );
+
+  const automaticallyPlacedTabs = () => {
+    if (signingRecipients.length === 0) return [];
+    let recipientIndex = 0;
+    return includedDocuments.flatMap((code) =>
+      pdfFieldsByDocument[code]
+        .filter((field) => field.kind === "signature")
+        .map((field) => {
+          const recipient =
+            signingRecipients[recipientIndex++ % signingRecipients.length];
+          return {
+            id: `detected-${code}-${field.id}`,
+            recipientId: recipient.id,
+            kind: "signature" as const,
+            documentCode: code,
+            page: field.page,
+            x: Math.min(86, Math.max(4, field.left)),
+            y: Math.min(94, Math.max(3, field.top)),
+          };
+        }),
+    );
+  };
+
+  const moveRecipient = (index: number, direction: -1 | 1) => {
+    setRecipients((current) => {
+      const nextIndex = index + direction;
+      if (nextIndex < 0 || nextIndex >= current.length) return current;
+      const next = [...current];
+      [next[index], next[nextIndex]] = [next[nextIndex], next[index]];
+      return next;
+    });
+  };
+
+  const commitPreparationTabs = (next: SignaturePreparationTab[]) => {
+    setTabHistory((current) => [...current, preparationTabs]);
+    setRedoTabHistory([]);
+    setPreparationTabs(next);
+  };
+
+  const undoPreparationTabs = () => {
+    const previous = tabHistory.at(-1);
+    if (!previous) return;
+    setRedoTabHistory((current) => [preparationTabs, ...current]);
+    setPreparationTabs(previous);
+    setTabHistory((current) => current.slice(0, -1));
+  };
+
+  const redoPreparationTabsChange = () => {
+    const next = redoTabHistory[0];
+    if (!next) return;
+    setTabHistory((current) => [...current, preparationTabs]);
+    setPreparationTabs(next);
+    setRedoTabHistory((current) => current.slice(1));
+  };
+
+  const placePreparationTab = (
+    kind: SignatureTabKind,
+    x: number,
+    y: number,
+    documentCode = activePreparationDocument,
+    page = activePreparationPage,
+  ) => {
+    if (!activePreparationRecipient) return;
+    nextPreparationTabId.current += 1;
+    commitPreparationTabs([
+      ...preparationTabs,
+      {
+        id: `manual-tab-${nextPreparationTabId.current}`,
+        recipientId: activePreparationRecipient,
+        kind,
+        documentCode,
+        page,
+        x: Math.min(88, Math.max(2, x)),
+        y: Math.min(96, Math.max(2, y)),
+      },
+    ]);
+    setPendingTabKind(null);
+  };
+
+  const placeTabFromPointer = (
+    event: React.MouseEvent<HTMLDivElement> | React.DragEvent<HTMLDivElement>,
+    kind: SignatureTabKind,
+    documentCode = activePreparationDocument,
+    page = activePreparationPage,
+  ) => {
+    const rect = event.currentTarget.getBoundingClientRect();
+    placePreparationTab(
+      kind,
+      ((event.clientX - rect.left) / rect.width) * 100,
+      ((event.clientY - rect.top) / rect.height) * 100,
+      documentCode,
+      page,
+    );
+  };
+
+  const includedPreparationPages = includedDocuments.flatMap((code) =>
+    documentPages.filter((page) => page.label === code),
+  );
+  const activePreparationDocumentIndex = includedDocuments.indexOf(
+    activePreparationDocument,
+  );
+  const activePreparationPageIndex = includedPreparationPages.findIndex(
+    (page) =>
+      page.label === activePreparationDocument &&
+      page.page === activePreparationPage,
+  );
+  const activeSigner = signingRecipients.find(
+    ({ id }) => id === activePreparationRecipient,
+  );
+
+  const scrollToPreparationPage = (
+    documentCode: PdfDocumentCode,
+    page: number,
+  ) => {
+    setActivePreparationDocument(documentCode);
+    setActivePreparationPage(page);
+    setPendingTabKind(null);
+    window.requestAnimationFrame(() => {
+      preparationPageRefs.current[`${documentCode}-${page}`]?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  };
+
+  const moveThroughPreparationPages = (direction: -1 | 1) => {
+    const currentIndex = Math.max(0, activePreparationPageIndex);
+    const nextPage = includedPreparationPages[currentIndex + direction];
+    if (!nextPage) return;
+    scrollToPreparationPage(nextPage.label as PdfDocumentCode, nextPage.page);
+  };
+
+  const syncActivePreparationPage = (
+    event: React.UIEvent<HTMLDivElement>,
+  ) => {
+    const scroller = event.currentTarget;
+    const scrollerTop = scroller.getBoundingClientRect().top + 20;
+    const closest = Array.from(
+      scroller.querySelectorAll<HTMLElement>("[data-preparation-page]"),
+    )
+      .map((page) => ({
+        page,
+        distance: Math.abs(page.getBoundingClientRect().top - scrollerTop),
+      }))
+      .sort((first, second) => first.distance - second.distance)[0]?.page;
+    if (!closest) return;
+    const documentCode = closest.dataset.documentCode as PdfDocumentCode;
+    const page = Number(closest.dataset.pageNumber);
+    if (
+      documentCode &&
+      page &&
+      (documentCode !== activePreparationDocument ||
+        page !== activePreparationPage)
+    ) {
+      setActivePreparationDocument(documentCode);
+      setActivePreparationPage(page);
+    }
+  };
+
+  const sendSignatureRequest = () => {
+    if (sendState !== "review" || placedTabCount === 0) return;
+    setSendState("sending");
+    window.setTimeout(() => setSendState("sent"), 1200);
   };
 
   return (
@@ -601,17 +1389,20 @@ function SignaturePackageFlow({
           <h2 id="signature-flow-title">Request signatures</h2>
           <p>2458 Maplewood Ave 12B</p>
         </div>
-        <span>Step 1 of 3</span>
+        <span>{sendState === "sent" ? "Request sent" : `Step ${step} of 3`}</span>
       </header>
 
-      <main className="oq-signature-main">
-        <form
-          className="oq-signature-card"
-          onSubmit={(event) => {
-            event.preventDefault();
-            onContinue(uploadedFiles[0] ?? transactionDocument);
-          }}
-        >
+      <main
+        className={`oq-signature-main ${step === 3 && sendState !== "sent" ? "is-preparing" : ""}`}
+      >
+        {step === 1 ? (
+          <form
+            className="oq-signature-card"
+            onSubmit={(event) => {
+              event.preventDefault();
+              setStep(2);
+            }}
+          >
           <header>
             <span className="oq-signature-kicker">Signature package</span>
             <h3>Prepare documents for signing</h3>
@@ -621,18 +1412,57 @@ function SignaturePackageFlow({
           <section className="oq-provider-summary" aria-label="Signature provider">
             <h4>Provider</h4>
             <div>
-              <span className="oq-provider-check" aria-hidden="true">
-                <Icon name="check" size={14} />
-              </span>
-              <span>
-                <b>DocuSign</b>
+              <span className="oq-provider-identity">
+                <Image
+                  src="/docusign-logo.svg"
+                  width={112}
+                  height={24}
+                  alt="Docusign"
+                />
                 <small>Secure electronic signature</small>
+                {docusignLinkStarted && (
+                  <small className="oq-provider-link-status" role="status">
+                    Finish signing in, then return to this tab.
+                  </small>
+                )}
               </span>
+              <button
+                type="button"
+                className="oq-link-provider"
+                onClick={() => {
+                  window.open(
+                    "https://account.docusign.com/",
+                    "_blank",
+                    "noopener,noreferrer",
+                  );
+                  setDocusignLinkStarted(true);
+                }}
+              >
+                <Icon name="plus" size={14} />
+                {docusignLinkStarted ? "Open Docusign" : "Link account"}
+              </button>
             </div>
           </section>
 
+          <section className="oq-selected-signature-documents" aria-label="Selected documents">
+            <h4>Included from transaction</h4>
+            <ul>
+              {includedDocuments.map((code) => {
+                const document = signatureDocumentOptions.find(
+                  (option) => option.code === code,
+                );
+                return (
+                  <li key={code}>
+                    <span><Icon name="check" size={12} /></span>
+                    <b>{code} — {document?.title}</b>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+
           <fieldset className="oq-signature-documents">
-            <legend>Forms</legend>
+            <legend>Add another document</legend>
             <label className="oq-replace-original">
               <input
                 type="checkbox"
@@ -664,15 +1494,42 @@ function SignaturePackageFlow({
                 />
               </label>
               <span>or add from transaction</span>
-              <select
-                aria-label="Add a document from this transaction"
-                value={transactionDocument}
-                onChange={(event) => setTransactionDocument(event.target.value)}
-              >
-                <option value="AD">[AD] Disclosure Regarding Agency Relationship</option>
-                <option value="BRBC">[BRBC] Buyer Representation Agreement</option>
-                <option value="PRBS">[PRBS] Possible Representation</option>
-              </select>
+              <div className="oq-transaction-document-add">
+                <select
+                  aria-label="Add a document from this transaction"
+                  value={transactionDocumentSelection}
+                  disabled={availableTransactionDocuments.length === 0}
+                  onChange={(event) =>
+                    setTransactionDocument(event.target.value as PdfDocumentCode)
+                  }
+                >
+                  {availableTransactionDocuments.length === 0 ? (
+                    <option>No other completed documents available</option>
+                  ) : (
+                    availableTransactionDocuments.map(({ code, title }) => (
+                      <option key={code} value={code}>[{code}] {title}</option>
+                    ))
+                  )}
+                </select>
+                <button
+                  type="button"
+                  disabled={availableTransactionDocuments.length === 0}
+                  onClick={() => {
+                    const code = transactionDocumentSelection as PdfDocumentCode;
+                    if (!code) return;
+                    if (includedDocuments.includes(code)) return;
+                    const nextDocuments = [...includedDocuments, code];
+                    setIncludedDocuments(nextDocuments);
+                    setTransactionDocument(
+                      availableTransactionDocuments.find(
+                        ({ code: optionCode }) => optionCode !== code,
+                      )?.code ?? code,
+                    );
+                  }}
+                >
+                  Add
+                </button>
+              </div>
             </div>
 
             {uploadedFiles.length > 0 && (
@@ -704,7 +1561,620 @@ function SignaturePackageFlow({
               Continue <span aria-hidden="true">›</span>
             </button>
           </footer>
-        </form>
+          </form>
+        ) : step === 2 ? (
+          <section className="oq-signature-card oq-recipient-card">
+            <header>
+              <span className="oq-signature-kicker">Recipients</span>
+              <h3>Add signers and recipients</h3>
+              <p>
+                People matched to signature fields are added from this transaction.
+              </p>
+            </header>
+
+            <div className="oq-recipient-body">
+              <div className="oq-recipient-heading">
+                <span>
+                  <b>Recipients</b>
+                  <small>Review who signs and who receives a copy.</small>
+                </span>
+                <label className="oq-signing-order">
+                  <input
+                    type="checkbox"
+                    checked={signingOrder}
+                    onChange={(event) => setSigningOrder(event.target.checked)}
+                  />
+                  <span aria-hidden="true" />
+                  Set signing order
+                </label>
+              </div>
+
+              <ol className="oq-recipient-list">
+                {recipients.map((recipient, index) => (
+                  <li key={recipient.id}>
+                    {signingOrder && (
+                      <span className="oq-recipient-order-controls">
+                        <span className="oq-recipient-order">{index + 1}</span>
+                        <span>
+                          <button
+                            type="button"
+                            aria-label={`Move ${recipient.name} earlier`}
+                            disabled={index === 0}
+                            onClick={() => moveRecipient(index, -1)}
+                          >
+                            ↑
+                          </button>
+                          <button
+                            type="button"
+                            aria-label={`Move ${recipient.name} later`}
+                            disabled={index === recipients.length - 1}
+                            onClick={() => moveRecipient(index, 1)}
+                          >
+                            ↓
+                          </button>
+                        </span>
+                      </span>
+                    )}
+                    <span
+                      className={`oq-recipient-avatar tone-${(index % 4) + 1}`}
+                      aria-hidden="true"
+                    >
+                      {recipientInitials(recipient.name)}
+                    </span>
+                    <span className="oq-recipient-copy">
+                      <span>
+                        <b>{recipient.name}</b>
+                        <em>{recipient.role}</em>
+                      </span>
+                      <small>{recipient.email}</small>
+                    </span>
+                    <select
+                      aria-label={`Delivery role for ${recipient.name}`}
+                      value={recipient.delivery}
+                      onChange={(event) =>
+                        setRecipients((current) =>
+                          current.map((item) =>
+                            item.id === recipient.id
+                              ? {
+                                  ...item,
+                                  delivery: event.target
+                                    .value as SignatureRecipient["delivery"],
+                                }
+                              : item,
+                          ),
+                        )
+                      }
+                    >
+                      <option value="sign">Needs to sign</option>
+                      <option value="copy">Receives a copy</option>
+                      <option value="in_person">In-person signer</option>
+                    </select>
+                    <button
+                      type="button"
+                      className="oq-recipient-remove"
+                      aria-label={`Remove ${recipient.name}`}
+                      onClick={() =>
+                        setRecipients((current) =>
+                          current.filter((item) => item.id !== recipient.id),
+                        )
+                      }
+                    >
+                      <Icon name="close" size={15} />
+                    </button>
+                  </li>
+                ))}
+              </ol>
+
+              {addingRecipient ? (
+                <div className="oq-add-recipient-form">
+                  <label>
+                    <span>Name</span>
+                    <input
+                      autoFocus
+                      value={recipientName}
+                      placeholder="Full name"
+                      onChange={(event) => setRecipientName(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    <span>Email</span>
+                    <input
+                      type="email"
+                      value={recipientEmail}
+                      placeholder="name@example.com"
+                      onChange={(event) => setRecipientEmail(event.target.value)}
+                    />
+                  </label>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setAddingRecipient(false);
+                        setRecipientName("");
+                        setRecipientEmail("");
+                      }}
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      className="primary"
+                      disabled={!recipientName.trim() || !recipientEmailValid}
+                      onClick={() => {
+                        setRecipients((current) => [
+                          ...current,
+                          {
+                            id: `recipient-${Date.now()}`,
+                            name: recipientName.trim(),
+                            email: recipientEmail.trim(),
+                            role: "Additional recipient",
+                            delivery: "sign",
+                          },
+                        ]);
+                        setAddingRecipient(false);
+                        setRecipientName("");
+                        setRecipientEmail("");
+                      }}
+                    >
+                      Add recipient
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="oq-add-recipient"
+                  onClick={() => setAddingRecipient(true)}
+                >
+                  <Icon name="plus" size={15} />
+                  Add recipient
+                </button>
+              )}
+            </div>
+
+            <footer>
+              <button type="button" onClick={() => setStep(1)}>Back</button>
+              <button
+                className="primary"
+                type="button"
+                disabled={signingRecipients.length === 0}
+                onClick={() => {
+                  const firstDocument =
+                    includedDocuments[0] ?? (currentDocumentCode as PdfDocumentCode);
+                  setActivePreparationDocument(firstDocument);
+                  setActivePreparationPage(1);
+                  setActivePreparationRecipient(signingRecipients[0]?.id ?? "");
+                  setPreparationTabs(autoAddTabs ? automaticallyPlacedTabs() : []);
+                  setTabHistory([]);
+                  setRedoTabHistory([]);
+                  setStep(3);
+                }}
+              >
+                Continue <span aria-hidden="true">›</span>
+              </button>
+            </footer>
+          </section>
+        ) : sendState === "sent" ? (
+          <section className="oq-signature-card oq-signature-result" aria-live="polite">
+            <div className="oq-signature-result-mark" aria-hidden="true">
+              <Icon name="check" size={28} />
+            </div>
+            <span className="oq-signature-kicker">Request sent</span>
+            <h3>Documents are on their way</h3>
+            <p>
+              {signingRecipients.length} signer{signingRecipients.length === 1 ? "" : "s"} received the request. Everyone marked to receive a copy will be notified when signing is complete.
+            </p>
+            <dl>
+              <div><dt>Documents</dt><dd>{includedDocuments.length + uploadedFiles.length}</dd></div>
+              <div><dt>Signature tabs</dt><dd>{placedTabCount}</dd></div>
+              <div><dt>Storage</dt><dd>{replaceOriginal ? "Replace originals" : "Keep both versions"}</dd></div>
+            </dl>
+            <footer>
+              <button
+                className="primary"
+                type="button"
+                onClick={() =>
+                  onContinue(
+                    uploadedFiles[0] ?? includedDocuments[0] ?? transactionDocument,
+                  )
+                }
+              >
+                Done
+              </button>
+            </footer>
+          </section>
+        ) : (
+          <section
+            className="oq-signature-preparation"
+            aria-label="Prepare signature tabs"
+          >
+            <div className="oq-preparation-toolbar">
+              <label className="oq-preparation-document-jump">
+                <span className="sr-only">Jump to document</span>
+                <select
+                  aria-label="Jump to document"
+                  value={activePreparationDocument}
+                  onChange={(event) =>
+                    scrollToPreparationPage(
+                      event.target.value as PdfDocumentCode,
+                      1,
+                    )
+                  }
+                >
+                  {includedDocuments.map((code, index) => (
+                    <option key={code} value={code}>
+                      {index + 1}. [{code}] {signatureDocumentOptions.find(
+                        (document) => document.code === code,
+                      )?.title}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label>
+                <span className="sr-only">Document zoom</span>
+                <select
+                  aria-label="Document zoom"
+                  value={preparationZoom}
+                  onChange={(event) => setPreparationZoom(event.target.value)}
+                >
+                  <option value="fit">Fit width</option>
+                  <option value="90">90%</option>
+                  <option value="110">110%</option>
+                  <option value="125">125%</option>
+                </select>
+              </label>
+              <div className="oq-preparation-page-nav" aria-label="Page navigation">
+                <button
+                  type="button"
+                  aria-label="Previous page"
+                  disabled={activePreparationPageIndex <= 0}
+                  onClick={() => moveThroughPreparationPages(-1)}
+                >‹</button>
+                <span>
+                  {Math.max(0, activePreparationPageIndex) + 1} / {includedPreparationPages.length}
+                </span>
+                <button
+                  type="button"
+                  aria-label="Next page"
+                  disabled={
+                    activePreparationPageIndex === includedPreparationPages.length - 1
+                  }
+                  onClick={() => moveThroughPreparationPages(1)}
+                >›</button>
+              </div>
+              <div className="oq-preparation-history">
+                <button
+                  type="button"
+                  disabled={tabHistory.length === 0}
+                  onClick={undoPreparationTabs}
+                >↶ <span>Undo</span></button>
+                <button
+                  type="button"
+                  disabled={redoTabHistory.length === 0}
+                  onClick={redoPreparationTabsChange}
+                ><span>Redo</span> ↷</button>
+              </div>
+            </div>
+
+            <div className="oq-preparation-body">
+              <aside className="oq-preparation-tools">
+                <header>
+                  <h3>Preparation tools</h3>
+                  <p>Click a tool, then click the document — or drag it into place.</p>
+                </header>
+
+                <label className="oq-preparation-role">
+                  <span>Select a signer</span>
+                  <span>
+                    <i
+                      className={`tone-${
+                        (Math.max(
+                          0,
+                          signingRecipients.findIndex(
+                            ({ id }) => id === activePreparationRecipient,
+                          ),
+                        ) % 4) + 1
+                      }`}
+                      aria-hidden="true"
+                    />
+                    <select
+                      value={activePreparationRecipient}
+                      onChange={(event) =>
+                        setActivePreparationRecipient(event.target.value)
+                      }
+                    >
+                      {signingRecipients.map((recipient) => (
+                        <option key={recipient.id} value={recipient.id}>
+                          {recipient.name} ({recipient.role})
+                        </option>
+                      ))}
+                    </select>
+                  </span>
+                </label>
+
+                <div className="oq-preparation-tool-list">
+                  {(["signature", "initials", "date"] as SignatureTabKind[]).map(
+                    (kind) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        draggable
+                        className={pendingTabKind === kind ? "is-active" : ""}
+                        aria-pressed={pendingTabKind === kind}
+                        onClick={() =>
+                          setPendingTabKind((current) =>
+                            current === kind ? null : kind,
+                          )
+                        }
+                        onDragStart={(event) => {
+                          event.dataTransfer.setData(
+                            "application/x-orqestron-tab-kind",
+                            kind,
+                          );
+                          event.dataTransfer.effectAllowed = "copy";
+                        }}
+                      >
+                        <span aria-hidden="true">
+                          {kind === "signature" ? (
+                            <Icon name="sign" size={20} />
+                          ) : kind === "initials" ? (
+                            <b>{activeSigner ? recipientInitials(activeSigner.name) : "IN"}</b>
+                          ) : (
+                            <span>□</span>
+                          )}
+                        </span>
+                        {signatureTabLabel[kind]}
+                      </button>
+                    ),
+                  )}
+                </div>
+
+                <div className="oq-preparation-tab-status" aria-live="polite">
+                  <b>{placedTabCount} tabs placed</b>
+                  <small>{detectedTabCount} signature fields detected</small>
+                </div>
+
+                <button
+                  type="button"
+                  className="oq-auto-place-tabs"
+                  onClick={() => {
+                    setAutoAddTabs(true);
+                    commitPreparationTabs(automaticallyPlacedTabs());
+                  }}
+                >
+                  Auto-place detected tabs
+                </button>
+                <button
+                  type="button"
+                  className="oq-remove-preparation-tabs"
+                  disabled={preparationTabs.length === 0}
+                  onClick={() => {
+                    setAutoAddTabs(false);
+                    commitPreparationTabs([]);
+                  }}
+                >
+                  Remove all tabs
+                </button>
+              </aside>
+
+              <section className="oq-preparation-canvas" aria-label="Document preparation canvas">
+                <div
+                  className="oq-preparation-scroll"
+                  onScroll={syncActivePreparationPage}
+                >
+                  {includedDocuments.map((documentCode, documentIndex) => {
+                    const pages = documentPages.filter(
+                      (page) => page.label === documentCode,
+                    );
+                    const documentOption = signatureDocumentOptions.find(
+                      ({ code }) => code === documentCode,
+                    );
+                    const documentTabCount = preparationTabs.filter(
+                      (tab) => tab.documentCode === documentCode,
+                    ).length;
+
+                    return (
+                      <section
+                        key={documentCode}
+                        className="oq-preparation-document"
+                        aria-labelledby={`preparation-document-${documentCode}`}
+                      >
+                        <header className="oq-preparation-document-header">
+                          <span>Document {documentIndex + 1} of {includedDocuments.length}</span>
+                          <div>
+                            <h4 id={`preparation-document-${documentCode}`}>
+                              [{documentCode}] {documentOption?.title}
+                            </h4>
+                            <small>
+                              {pages.length} page{pages.length === 1 ? "" : "s"} · {documentTabCount} tab{documentTabCount === 1 ? "" : "s"}
+                            </small>
+                          </div>
+                        </header>
+
+                        <div className="oq-preparation-document-pages">
+                          {pages.map((pageItem, pageIndex) => {
+                            const pageTabs = preparationTabs.filter(
+                              (tab) =>
+                                tab.documentCode === documentCode &&
+                                tab.page === pageItem.page,
+                            );
+                            const preparationPageKey = `${documentCode}-${pageItem.page}`;
+
+                            return (
+                              <div
+                                key={preparationPageKey}
+                                ref={(node) => {
+                                  preparationPageRefs.current[preparationPageKey] = node;
+                                }}
+                                className="oq-preparation-page-frame"
+                                data-preparation-page
+                                data-document-code={documentCode}
+                                data-page-number={pageItem.page}
+                              >
+                                <div className="oq-preparation-page-meta">
+                                  <span>Page {pageIndex + 1} of {pages.length}</span>
+                                  <small>{pageTabs.length} tab{pageTabs.length === 1 ? "" : "s"}</small>
+                                </div>
+                                <div
+                                  className={`oq-preparation-page ${pendingTabKind ? "is-placing" : ""}`}
+                                  style={{
+                                    width:
+                                      preparationZoom === "fit"
+                                        ? "min(860px, 100%)"
+                                        : `${Math.round(760 * (Number(preparationZoom) / 100))}px`,
+                                  }}
+                                  onMouseDown={() => {
+                                    setActivePreparationDocument(documentCode);
+                                    setActivePreparationPage(pageItem.page);
+                                  }}
+                                  onClick={(event) => {
+                                    if (
+                                      pendingTabKind &&
+                                      !(event.target as HTMLElement).closest(".oq-preparation-tab")
+                                    ) {
+                                      placeTabFromPointer(
+                                        event,
+                                        pendingTabKind,
+                                        documentCode,
+                                        pageItem.page,
+                                      );
+                                    }
+                                  }}
+                                  onDragOver={(event) => {
+                                    event.preventDefault();
+                                    event.dataTransfer.dropEffect = event.dataTransfer.types.includes(
+                                      "application/x-orqestron-tab-id",
+                                    )
+                                      ? "move"
+                                      : "copy";
+                                  }}
+                                  onDrop={(event) => {
+                                    event.preventDefault();
+                                    const rect = event.currentTarget.getBoundingClientRect();
+                                    const x = ((event.clientX - rect.left) / rect.width) * 100;
+                                    const y = ((event.clientY - rect.top) / rect.height) * 100;
+                                    const tabId = event.dataTransfer.getData(
+                                      "application/x-orqestron-tab-id",
+                                    );
+                                    if (tabId) {
+                                      commitPreparationTabs(
+                                        preparationTabs.map((tab) =>
+                                          tab.id === tabId
+                                            ? {
+                                                ...tab,
+                                                documentCode,
+                                                page: pageItem.page,
+                                                x: Math.min(88, Math.max(2, x)),
+                                                y: Math.min(96, Math.max(2, y)),
+                                              }
+                                            : tab,
+                                        ),
+                                      );
+                                      return;
+                                    }
+                                    const kind = event.dataTransfer.getData(
+                                      "application/x-orqestron-tab-kind",
+                                    ) as SignatureTabKind;
+                                    if (kind && signatureTabLabel[kind]) {
+                                      placeTabFromPointer(
+                                        event,
+                                        kind,
+                                        documentCode,
+                                        pageItem.page,
+                                      );
+                                    }
+                                  }}
+                                >
+                                  <Image
+                                    src={previewPageImageSrc(documentCode, pageItem.page)}
+                                    width={1400}
+                                    height={1812}
+                                    sizes="(max-width: 760px) 100vw, 860px"
+                                    alt={`${documentOption?.title ?? documentCode}, page ${pageItem.page}`}
+                                    priority={documentIndex === 0 && pageIndex === 0}
+                                  />
+
+                                  {pageTabs.map((tab) => {
+                                    const recipientIndex = Math.max(
+                                      0,
+                                      signingRecipients.findIndex(
+                                        ({ id }) => id === tab.recipientId,
+                                      ),
+                                    );
+                                    const recipient = signingRecipients[recipientIndex];
+                                    return (
+                                      <div
+                                        key={tab.id}
+                                        className={`oq-preparation-tab tone-${(recipientIndex % 4) + 1} is-${tab.kind}`}
+                                        style={{ left: `${tab.x}%`, top: `${tab.y}%` }}
+                                        draggable
+                                        onDragStart={(event) => {
+                                          event.stopPropagation();
+                                          event.dataTransfer.setData(
+                                            "application/x-orqestron-tab-id",
+                                            tab.id,
+                                          );
+                                          event.dataTransfer.effectAllowed = "move";
+                                        }}
+                                      >
+                                        <span aria-hidden="true">
+                                          {tab.kind === "signature" ? (
+                                            <Icon name="sign" size={14} />
+                                          ) : tab.kind === "initials" ? (
+                                            recipientInitials(recipient?.name ?? "Initials")
+                                          ) : (
+                                            "Date"
+                                          )}
+                                        </span>
+                                        <b>{signatureTabLabel[tab.kind]}</b>
+                                        <button
+                                          type="button"
+                                          aria-label={`Remove ${signatureTabLabel[tab.kind]} tab for ${recipient?.name ?? "signer"}`}
+                                          onClick={(event) => {
+                                            event.stopPropagation();
+                                            commitPreparationTabs(
+                                              preparationTabs.filter(
+                                                (candidate) => candidate.id !== tab.id,
+                                              ),
+                                            );
+                                          }}
+                                        >×</button>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </section>
+                    );
+                  })}
+                </div>
+              </section>
+            </div>
+
+            <footer className="oq-preparation-footer">
+              <button type="button" onClick={() => setStep(2)}>Back</button>
+              <span>
+                Document {activePreparationDocumentIndex + 1} of {includedDocuments.length}
+                {placedTabCount > 0 ? ` · ${placedTabCount} tabs ready` : " · Add at least one tab"}
+              </span>
+              <button
+                className="primary"
+                type="button"
+                disabled={placedTabCount === 0 || sendState === "sending"}
+                onClick={sendSignatureRequest}
+              >
+                {sendState === "sending" ? (
+                  <><span className="oq-send-spinner" aria-hidden="true" /> Sending request…</>
+                ) : (
+                  <>Continue <span aria-hidden="true">›</span></>
+                )}
+              </button>
+            </footer>
+          </section>
+        )}
       </main>
     </section>
   );
@@ -3753,7 +5223,11 @@ export default function Page() {
   const [panelOpen, setPanelOpen] = useState(true);
   const [notice, setNotice] = useState("");
   const [partyOpen, setPartyOpen] = useState(false);
+  const [signaturePickerOpen, setSignaturePickerOpen] = useState(false);
   const [signatureOpen, setSignatureOpen] = useState(false);
+  const [signatureDocuments, setSignatureDocuments] = useState<PdfDocumentCode[]>(
+    [],
+  );
   const [detailValues, setDetailValues] = useState(initialDetailValues);
   const [parties, setParties] = useState<TransactionParty[]>(initialParties);
   const [checkedFields, setCheckedFields] = useState<string[]>(() =>
@@ -3761,6 +5235,12 @@ export default function Page() {
   );
   const [pdfFieldValues, setPdfFieldValues] = useState<Record<string, string>>(
     () => linkedTextValues(initialDetailValues),
+  );
+  const [signatureRequiredFieldIds] = useState<SignatureRequiredFieldIds>(() =>
+    buildSignatureDemoRequiredFields(
+      linkedTextValues(initialDetailValues),
+      linkedCheckedFields(initialDetailValues),
+    ),
   );
   const [activePdfField, setActivePdfField] = useState<{
     documentCode: PdfDocumentCode;
@@ -3770,6 +5250,11 @@ export default function Page() {
   const [linkedHighlightId, setLinkedHighlightId] = useState<string | null>(null);
   const [pendingLinkedTarget, setPendingLinkedTarget] =
     useState<DetailPdfLink | null>(null);
+  const [pendingSignatureField, setPendingSignatureField] = useState<{
+    documentCode: PdfDocumentCode;
+    stageKey: string;
+    field: PdfFieldDefinition;
+  } | null>(null);
   const [transactionNameOverride, setTransactionNameOverride] = useState<
     string | null
   >(null);
@@ -3906,6 +5391,43 @@ export default function Page() {
     });
   };
 
+  const updateSignaturePickerField = (
+    documentCode: PdfDocumentCode,
+    field: PdfFieldDefinition,
+    value: string | boolean,
+  ) => {
+    const id = `${documentCode}:${field.id}`;
+    if (field.kind === "checkbox") {
+      setCheckedFields((current) => {
+        const next = new Set(current);
+        if (value) next.add(id);
+        else next.delete(id);
+        return [...next];
+      });
+      return;
+    }
+
+    const textValue = String(value);
+    const { self, siblings } = siblingLinksForPdfField(
+      documentCode,
+      field.id,
+    );
+    if (self) {
+      if (self.detailKeys.length === 1) {
+        updateDetailValue(self.detailKeys[0], textValue);
+      }
+      setPdfFieldValues((current) => {
+        const next = { ...current };
+        [self, ...siblings].forEach((link) => {
+          next[linkedPdfId(link)] = textValue;
+        });
+        return next;
+      });
+      return;
+    }
+    setPdfFieldValues((current) => ({ ...current, [id]: textValue }));
+  };
+
   const linkedConflicts = useMemo(
     () => findLinkedConflicts(detailValues, pdfFieldValues, checkedFields),
     [detailValues, pdfFieldValues, checkedFields],
@@ -3926,6 +5448,95 @@ export default function Page() {
       ) as Record<PdfDocumentCode, { filled: number; total: number }>,
     [checkedFields, pdfFieldValues],
   );
+
+  const signatureReadyDocuments = useMemo(
+    () =>
+      signatureDocumentOptions
+        .filter(({ code }) =>
+          signatureDocumentIsComplete(
+            code,
+            pdfFieldValues,
+            checkedFields,
+            signatureRequiredFieldIds,
+          ),
+        )
+        .map(({ code }) => code),
+    [checkedFields, pdfFieldValues, signatureRequiredFieldIds],
+  );
+
+  const openFirstIncompleteField = (documentCode: PdfDocumentCode) => {
+    const field = pdfFieldsByDocument[documentCode].find((candidate) => {
+      if (isSigningDateField(documentCode, candidate)) return false;
+      const id = `${documentCode}:${candidate.id}`;
+      if (candidate.kind === "checkbox") return !checkedFields.includes(id);
+      return !(pdfFieldValues[id] ?? candidate.value ?? "").trim();
+    });
+    if (!field) {
+      setNotice(`${documentCode} has no editable fields left to complete.`);
+      return;
+    }
+    const page = documentPages.find(
+      (candidate) =>
+        candidate.label === documentCode && candidate.page === field.page,
+    );
+    if (!page) {
+      setNotice(`${documentCode} page ${field.page} is not in this transaction packet.`);
+      return;
+    }
+    const stageKey = pageKey(page);
+    setActivePdfField(null);
+    setPdf(page);
+    setPendingSignatureField({ documentCode, stageKey, field });
+    stageRefs.current[stageKey]?.scrollIntoView({
+      behavior: "auto",
+      block: "start",
+    });
+  };
+
+  useEffect(() => {
+    if (
+      !pendingSignatureField ||
+      pdf.label !== pendingSignatureField.documentCode ||
+      pdf.page !== pendingSignatureField.field.page
+    ) {
+      return;
+    }
+    const frame = window.requestAnimationFrame(() => {
+      const targetId = linkedPdfFieldDomId({
+        form: pendingSignatureField.documentCode,
+        fieldId: pendingSignatureField.field.id,
+      });
+      const fieldElement = document.getElementById(targetId);
+      const canvas = canvasRef.current;
+      if (!fieldElement || !canvas) return;
+      window.history.replaceState(null, "", `#${targetId}`);
+      const fieldRect = fieldElement.getBoundingClientRect();
+      const canvasRect = canvas.getBoundingClientRect();
+      const centeredTop =
+        canvas.scrollTop +
+        fieldRect.top -
+        canvasRect.top -
+        (canvas.clientHeight - fieldRect.height) / 2;
+      canvas.scrollTo({ top: Math.max(0, centeredTop), behavior: "auto" });
+      fieldElement.focus({ preventScroll: true });
+      setLinkedHighlightId(targetId);
+      if (pendingSignatureField.field.kind !== "checkbox") {
+        setActivePdfField(pendingSignatureField);
+      }
+      if (linkedHighlightTimerRef.current !== null) {
+        window.clearTimeout(linkedHighlightTimerRef.current);
+      }
+      linkedHighlightTimerRef.current = window.setTimeout(
+        () => setLinkedHighlightId(null),
+        6000,
+      );
+      setNotice(
+        `Opened the next incomplete field in ${pendingSignatureField.documentCode}, page ${pendingSignatureField.field.page}.`,
+      );
+      setPendingSignatureField(null);
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [pdf.label, pdf.page, pendingSignatureField]);
 
   const goToLinkedField = (target: DetailPdfLink) => {
     const page = documentPages.find(
@@ -4105,7 +5716,7 @@ export default function Page() {
           </button>
           <button
             aria-label="Request signatures"
-            onClick={() => setSignatureOpen(true)}
+            onClick={() => setSignaturePickerOpen(true)}
           >
             <Icon name="sign" />
             <span>Sign</span>
@@ -4187,7 +5798,7 @@ export default function Page() {
                     return (
                       <button
                         key={id}
-                        id={linked ? domId : undefined}
+                        id={domId}
                         className={`oq-pdf-field ${field.kind === "checkbox" ? "is-checkbox" : ""} ${field.kind === "signature" ? "is-signature" : ""} ${linked ? "is-linked" : ""} ${checked ? "checked" : ""} ${value ? "has-value" : ""} ${linkedHighlightId === domId ? "is-linked-target" : ""}`}
                         style={{
                           left: `${field.left}%`,
@@ -4382,14 +5993,36 @@ export default function Page() {
         </nav>
       </div>
       {partyOpen && <PartyModal onClose={() => setPartyOpen(false)} />}
+      {signaturePickerOpen && (
+        <SignatureDocumentPicker
+          initialDocuments={signatureDocuments}
+          pdfFieldValues={pdfFieldValues}
+          checkedFields={checkedFields}
+          requiredFieldIdsByDocument={signatureRequiredFieldIds}
+          onClose={() => setSignaturePickerOpen(false)}
+          onUpdateField={updateSignaturePickerField}
+          onEditDocument={(document, selectedDocuments) => {
+            setSignatureDocuments(selectedDocuments);
+            setSignaturePickerOpen(false);
+            openFirstIncompleteField(document);
+          }}
+          onContinue={(documents) => {
+            setSignatureDocuments(documents);
+            setSignaturePickerOpen(false);
+            setSignatureOpen(true);
+          }}
+        />
+      )}
       {signatureOpen && (
         <SignaturePackageFlow
           currentDocumentCode={pdf.label}
+          selectedDocuments={signatureDocuments}
+          eligibleDocuments={signatureReadyDocuments}
           onClose={() => setSignatureOpen(false)}
           onContinue={(document) => {
             setSignatureOpen(false);
             setNotice(
-              `Signature package prepared with ${document}. Connect the provider API to continue to recipient setup.`,
+              `Signature request sent successfully. ${document} is now awaiting signatures.`,
             );
           }}
         />
