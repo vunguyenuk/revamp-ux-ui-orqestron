@@ -10,13 +10,14 @@
 
   /* Type scale — every font-size in the app resolves to one of these seven
      steps. Add a step here rather than a one-off px value in a component. */
-  --text-2xs: 11px;  /* uppercase micro-labels, counters, page badges */
-  --text-xs: 12px;   /* meta and helper text under a control */
-  --text-sm: 13px;   /* field labels, secondary body */
-  --text-md: 14px;   /* body, inputs, list titles */
-  --text-lg: 16px;   /* sub-section headings */
-  --text-xl: 19px;   /* card and dialog titles */
-  --text-2xl: 22px;  /* panel and page titles */
+  --text-micro: 0.625rem; /* quiet document/page labels */
+  --text-2xs: 0.6875rem;  /* uppercase micro-labels, counters, page badges */
+  --text-xs: 0.75rem;     /* meta and helper text under a control */
+  --text-sm: 0.8125rem;   /* field labels, secondary body */
+  --text-md: 0.875rem;    /* body, inputs, list titles */
+  --text-lg: 1rem;        /* sub-section headings */
+  --text-xl: 1.1875rem;   /* card and dialog titles */
+  --text-2xl: 1.375rem;   /* panel and page titles */
 
   /* One weight for the entire product. Hierarchy is carried by size and colour
      instead of weight, so there is a single value to change here. Avenir Next
@@ -40,6 +41,7 @@ body {
 
 body {
   -webkit-font-smoothing: antialiased;
+  font-kerning: normal;
 }
 
 body,

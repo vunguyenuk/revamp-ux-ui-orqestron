@@ -2531,12 +2531,10 @@ function PdfFieldPopover({
   const linkedForms = [
     ...new Set([documentCode, ...siblings.map((link) => link.form)]),
   ];
-  const placeAbove = field.top > 68;
   const anchoredStyle: React.CSSProperties = {
-    top: `${placeAbove ? field.top : field.top + field.height}%`,
-    transform: placeAbove
-      ? "translateY(calc(-100% - 8px)) translateY(var(--oq-popover-nudge, 0px))"
-      : "translateY(8px) translateY(var(--oq-popover-nudge, 0px))",
+    top: `${field.top + field.height}%`,
+    transform:
+      "translateY(8px) translateY(var(--oq-popover-nudge, 0px))",
     ...(field.left > 48 ? { right: "2%" } : { left: `${Math.max(2, field.left)}%` }),
   };
 
@@ -2553,12 +2551,13 @@ function PdfFieldPopover({
       const canvasRect = canvas.getBoundingClientRect();
       const topLimit = canvasRect.top + 12;
       const bottomLimit = canvasRect.bottom - 12;
+      const bottomOverflow = popoverRect.bottom - bottomLimit;
+      if (bottomOverflow > 0) {
+        canvas.scrollTop += Math.ceil(bottomOverflow);
+        return;
+      }
       const nudge =
-        popoverRect.top < topLimit
-          ? topLimit - popoverRect.top
-          : popoverRect.bottom > bottomLimit
-            ? bottomLimit - popoverRect.bottom
-            : 0;
+        popoverRect.top < topLimit ? topLimit - popoverRect.top : 0;
       node.style.setProperty("--oq-popover-nudge", `${Math.round(nudge)}px`);
     };
 
@@ -3625,6 +3624,369 @@ type AssistantMessage = {
   text: string;
 };
 
+type VoiceFillScope = "empty" | "transaction" | "document";
+type VoiceRisk = "standard" | "review" | "critical";
+
+type VoiceFieldUpdate = {
+  target: "detail" | "party";
+  key: string;
+  value: string;
+  partyId?: string;
+};
+
+type VoiceProposal = {
+  id: string;
+  section: string;
+  label: string;
+  currentValue: string;
+  value: string;
+  updates: VoiceFieldUpdate[];
+  risk: VoiceRisk;
+  riskReason: string;
+  confidence: number;
+  affectedDocuments: string[];
+  affectedFields: number;
+  confirmed: boolean;
+  included: boolean;
+  editedByUser: boolean;
+};
+
+const voiceScopeCopy: Record<
+  VoiceFillScope,
+  { label: string; description: string }
+> = {
+  empty: {
+    label: "Empty fields only",
+    description: "Adds missing data without replacing existing values.",
+  },
+  transaction: {
+    label: "Transaction + forms",
+    description: "Updates transaction data and every linked form.",
+  },
+  document: {
+    label: "This document only",
+    description: "Updates mapped fields in the open document only.",
+  },
+};
+
+const voiceRiskCopy: Record<
+  VoiceRisk,
+  { label: string; className: string }
+> = {
+  standard: { label: "Ready", className: "standard" },
+  review: { label: "Review", className: "review" },
+  critical: { label: "High impact", className: "critical" },
+};
+
+const cleanSpokenNumber = (raw: string, suffix = "") => {
+  const amount = Number(raw.replace(/,/g, ""));
+  if (!Number.isFinite(amount)) return "";
+  const multiplier = /m|million|triệu/i.test(suffix)
+    ? 1_000_000
+    : /k|thousand|nghìn/i.test(suffix)
+      ? 1_000
+      : 1;
+  return String(Math.round(amount * multiplier));
+};
+
+const formatMoney = (value: string) => {
+  const amount = Number(value.replace(/[^\d.-]/g, ""));
+  return Number.isFinite(amount)
+    ? `$${Math.round(amount).toLocaleString("en-US")}`
+    : value;
+};
+
+const displayVoiceValue = (proposal: VoiceProposal, value: string) => {
+  if (!value) return "Empty";
+  if (proposal.id === "initial-deposit" && value.includes("(")) return value;
+  return proposal.id === "purchase-price" || proposal.id === "initial-deposit"
+    ? formatMoney(value)
+    : value;
+};
+
+const splitVoiceName = (fullName: string) => {
+  const parts = fullName.trim().replace(/\s+/g, " ").split(" ");
+  if (parts.length === 1) return { firstName: parts[0], lastName: "" };
+  const looksVietnamese = /[À-ỹ]/.test(fullName);
+  if (looksVietnamese) {
+    return {
+      firstName: parts.at(-1) ?? "",
+      lastName: parts.slice(0, -1).join(" "),
+    };
+  }
+  return {
+    firstName: parts.slice(0, -1).join(" "),
+    lastName: parts.at(-1) ?? "",
+  };
+};
+
+const voiceDateFromDays = (start: string, days: number) => {
+  const [month, day, shortYear] = start.split("/").map(Number);
+  if (!month || !day || !shortYear) return "";
+  const year = shortYear < 100 ? 2000 + shortYear : shortYear;
+  const date = new Date(year, month - 1, day);
+  date.setDate(date.getDate() + days);
+  return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}/${String(date.getFullYear()).slice(-2)}`;
+};
+
+const voiceDateFromPhrase = (phrase: string) => {
+  const numeric = phrase.match(/(\d{1,2})[/-](\d{1,2})(?:[/-](\d{2,4}))?/);
+  if (numeric) {
+    const year = numeric[3]
+      ? numeric[3].length === 4
+        ? numeric[3].slice(-2)
+        : numeric[3]
+      : "26";
+    return `${numeric[1].padStart(2, "0")}/${numeric[2].padStart(2, "0")}/${year}`;
+  }
+  const named = phrase.match(
+    /(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\s+(\d{1,2})(?:,?\s*(\d{4}))?/i,
+  );
+  if (!named) return "";
+  const months = [
+    "jan",
+    "feb",
+    "mar",
+    "apr",
+    "may",
+    "jun",
+    "jul",
+    "aug",
+    "sep",
+    "oct",
+    "nov",
+    "dec",
+  ];
+  const month = months.indexOf(named[1].slice(0, 3).toLowerCase()) + 1;
+  return `${String(month).padStart(2, "0")}/${named[2].padStart(2, "0")}/${(named[3] ?? "2026").slice(-2)}`;
+};
+
+const voiceAffected = (detailKeys: string[]) => {
+  const links = detailPdfLinks.filter((link) =>
+    link.detailKeys.some((key) => detailKeys.includes(key)),
+  );
+  return {
+    affectedDocuments: [...new Set(links.map((link) => link.form))],
+    affectedFields: links.length,
+  };
+};
+
+function extractVoiceProposals(
+  transcript: string,
+  values: Record<string, string>,
+  parties: TransactionParty[],
+) {
+  const proposals: VoiceProposal[] = [];
+  const add = (
+    proposal: Omit<
+      VoiceProposal,
+      "confirmed" | "included" | "editedByUser"
+    >,
+  ) => {
+    if (proposal.value && proposal.value !== proposal.currentValue) {
+      proposals.push({
+        ...proposal,
+        confirmed: proposal.risk === "standard",
+        included: true,
+        editedByUser: false,
+      });
+    }
+  };
+
+  const seller = parties.find((party) => /seller/i.test(party.values.role));
+  const sellerMatch = transcript.match(
+    /(?:seller|người bán|nhà)\s*(?:(?:is|là|to)\s+|:\s*)?([A-Za-zÀ-ỹ' -]+?)(?=\s+(?:purchase|price|chốt\s+giá|giá|deposit|cọc|close|escrow|and\s+(?:price|deposit|close))|[,.]|$)/i,
+  );
+  if (seller && sellerMatch) {
+    const name = sellerMatch[1].trim();
+    const split = splitVoiceName(name);
+    const current = [seller.values.firstName, seller.values.lastName]
+      .filter(Boolean)
+      .join(" ");
+    add({
+      id: "seller-name",
+      section: "Parties",
+      label: "Seller",
+      currentValue: current,
+      value: name,
+      updates: [
+        { target: "party", partyId: seller.id, key: "firstName", value: split.firstName },
+        { target: "party", partyId: seller.id, key: "lastName", value: split.lastName },
+      ],
+      risk: "review",
+      riskReason: "Legal identity · Review spelling",
+      confidence: 92,
+      affectedDocuments: [],
+      affectedFields: 0,
+    });
+  }
+
+  const buyerMatch = transcript.match(
+    /(?:primary\s+)?(?:buyer|người mua)\s*(?:(?:is|là|to)\s+|:\s*)?([A-Za-zÀ-ỹ' -]+?)(?=\s+(?:purchase|price|chốt\s+giá|giá|deposit|cọc|close|escrow|and\s+(?:price|deposit|close))|[,.]|$)/i,
+  );
+  if (buyerMatch) {
+    const name = buyerMatch[1].replace(/\s+and\s+.*$/i, "").trim();
+    const split = splitVoiceName(name);
+    const affected = voiceAffected(["buyer1FirstName", "buyer1LastName"]);
+    add({
+      id: "buyer-name",
+      section: "Parties",
+      label: "Primary buyer",
+      currentValue: [values.buyer1FirstName, values.buyer1LastName]
+        .filter(Boolean)
+        .join(" "),
+      value: name,
+      updates: [
+        { target: "detail", key: "buyer1FirstName", value: split.firstName },
+        { target: "detail", key: "buyer1LastName", value: split.lastName },
+      ],
+      risk: "review",
+      riskReason: "Legal identity · Review spelling",
+      confidence: 94,
+      ...affected,
+    });
+  }
+
+  const priceMatch = transcript.match(
+    /(?:purchase\s+price|sale\s+price|giá\s+bán|giá)\s*(?:(?:is|to|là)\s+|:\s*)?\$?([\d,.]+)\s*(k|thousand|million|m|triệu|nghìn)?/i,
+  );
+  const proposedPrice = priceMatch
+    ? cleanSpokenNumber(priceMatch[1], priceMatch[2])
+    : "";
+  if (proposedPrice) {
+    const affected = voiceAffected(["purchasePrice"]);
+    add({
+      id: "purchase-price",
+      section: "Offer",
+      label: "Purchase price",
+      currentValue: values.purchasePrice,
+      value: proposedPrice,
+      updates: [
+        { target: "detail", key: "purchasePrice", value: proposedPrice },
+      ],
+      risk: "critical",
+      riskReason: "Financial term · Confirmation required",
+      confidence: 97,
+      ...affected,
+    });
+  }
+
+  const depositPercent = transcript.match(
+    /(?:initial\s+)?(?:deposit|cọc)[^\d]{0,14}(\d+(?:\.\d+)?)\s*%/i,
+  );
+  const depositMoney = transcript.match(
+    /(?:initial\s+)?(?:deposit|cọc)\s*(?:(?:is|of|to|là)\s+|:\s*)?\$?([\d,.]+)\s*(k|thousand|million|m|triệu|nghìn)?/i,
+  );
+  let proposedDeposit = "";
+  let depositDisplay = "";
+  if (depositPercent) {
+    const base = Number(proposedPrice || values.purchasePrice.replace(/,/g, ""));
+    const percent = Number(depositPercent[1]);
+    proposedDeposit = String(Math.round((base * percent) / 100));
+    depositDisplay = `${formatMoney(proposedDeposit)} (${percent}%)`;
+  } else if (depositMoney) {
+    proposedDeposit = cleanSpokenNumber(depositMoney[1], depositMoney[2]);
+    depositDisplay = formatMoney(proposedDeposit);
+  }
+  if (proposedDeposit) {
+    const affected = voiceAffected(["deposit1"]);
+    add({
+      id: "initial-deposit",
+      section: "Offer",
+      label: "Initial deposit",
+      currentValue: values.deposit1,
+      value: depositDisplay,
+      updates: [
+        { target: "detail", key: "deposit1", value: proposedDeposit },
+      ],
+      risk: "critical",
+      riskReason: "Financial term · Confirmation required",
+      confidence: depositPercent ? 91 : 96,
+      ...affected,
+    });
+  }
+
+  const closeMatch = transcript.match(
+    /(?:close(?:\s+of)?\s+escrow|escrow\s+close|đóng\s+escrow)[^,.]*/i,
+  );
+  if (closeMatch) {
+    const days = closeMatch[0].match(/(\d+)\s*(?:days?|ngày)/i);
+    const proposedClose = days
+      ? voiceDateFromDays(values.offerAccepted, Number(days[1]))
+      : voiceDateFromPhrase(closeMatch[0]);
+    if (proposedClose) {
+      const affected = voiceAffected(["closeOfEscrow"]);
+      add({
+        id: "close-of-escrow",
+        section: "Dates",
+        label: "Close of escrow",
+        currentValue: values.closeOfEscrow,
+        value: proposedClose,
+        updates: [
+          { target: "detail", key: "closeOfEscrow", value: proposedClose },
+        ],
+        risk: "critical",
+        riskReason: days
+          ? `Deadline · ${days[1]} days from accepted date`
+          : "Deadline · Confirmation required",
+        confidence: days ? 86 : 95,
+        ...affected,
+      });
+    }
+  }
+
+  if (/conventional(?:\s+loan)?/i.test(transcript)) {
+    const value = "80% conventional loan, 30-year fixed";
+    const affected = voiceAffected(["financingTerms"]);
+    add({
+      id: "financing-terms",
+      section: "Financing",
+      label: "Loan type",
+      currentValue: values.financingTerms,
+      value,
+      updates: [{ target: "detail", key: "financingTerms", value }],
+      risk: "review",
+      riskReason: "Financing term · Review wording",
+      confidence: 88,
+      ...affected,
+    });
+  }
+
+  return proposals;
+}
+
+const editVoiceProposal = (proposal: VoiceProposal, rawValue: string) => {
+  const value = rawValue.trim();
+  let updates = proposal.updates;
+  if (proposal.id === "seller-name" || proposal.id === "buyer-name") {
+    const split = splitVoiceName(value);
+    updates = proposal.updates.map((update) => ({
+      ...update,
+      value: update.key === "firstName" ? split.firstName : split.lastName,
+    }));
+  } else if (
+    proposal.id === "purchase-price" ||
+    proposal.id === "initial-deposit"
+  ) {
+    const normalized = cleanSpokenNumber(value.replace(/[^\d.]/g, ""));
+    updates = proposal.updates.map((update) => ({
+      ...update,
+      value: normalized || update.value,
+    }));
+  } else {
+    updates = proposal.updates.map((update) => ({ ...update, value }));
+  }
+  return {
+    ...proposal,
+    value,
+    updates,
+    editedByUser: true,
+    confirmed: true,
+    included: true,
+    confidence: 100,
+  };
+};
+
 type SpeechRecognitionResultEvent = {
   results: ArrayLike<{ 0: { transcript: string } }>;
 };
@@ -3676,16 +4038,29 @@ function AssistantPanel({
   documentLabel,
   documentTitle,
   page,
+  transactionValues,
+  parties,
+  onApplyVoice,
 }: {
   documentLabel: string;
   documentTitle: string;
   page: number;
+  transactionValues: Record<string, string>;
+  parties: TransactionParty[];
+  onApplyVoice: (
+    scope: VoiceFillScope,
+    proposals: VoiceProposal[],
+  ) => void;
 }) {
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
   const [thinking, setThinking] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [voiceStatus, setVoiceStatus] = useState(defaultVoiceStatus);
+  const [voiceScope, setVoiceScope] = useState<VoiceFillScope>("empty");
+  const [voiceReview, setVoiceReview] = useState<VoiceProposal[]>([]);
+  const [editingProposalId, setEditingProposalId] = useState<string | null>(null);
+  const [editDraft, setEditDraft] = useState("");
   const [messages, setMessages] = useState<AssistantMessage[]>([
     assistantWelcome(documentLabel, page),
   ]);
@@ -3696,6 +4071,7 @@ function AssistantPanel({
   const replyTimerRef = useRef<number | null>(null);
   const messageIdRef = useRef(1);
   const threadRef = useRef<HTMLDivElement | null>(null);
+  const voiceReviewRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     threadRef.current?.scrollTo({
@@ -3703,6 +4079,23 @@ function AssistantPanel({
       behavior: "smooth",
     });
   }, [messages, thinking]);
+
+  useEffect(() => {
+    if (voiceReview.length === 0) return;
+    const frame = window.requestAnimationFrame(() => {
+      const thread = threadRef.current;
+      const review = voiceReviewRef.current;
+      if (!thread || !review) return;
+      thread.scrollTo({
+        top:
+          thread.scrollTop +
+          review.getBoundingClientRect().top -
+          thread.getBoundingClientRect().top,
+        behavior: "smooth",
+      });
+    });
+    return () => window.cancelAnimationFrame(frame);
+  }, [voiceReview.length]);
 
   useEffect(
     () => () => {
@@ -3717,6 +4110,7 @@ function AssistantPanel({
   const send = (value = text) => {
     const prompt = value.trim();
     if (!prompt || thinking) return;
+    const proposals = extractVoiceProposals(prompt, transactionValues, parties);
     setMessages((current) => [
       ...current,
       { id: messageIdRef.current++, role: "user", text: prompt },
@@ -3724,6 +4118,20 @@ function AssistantPanel({
     setText("");
     setThinking(true);
     replyTimerRef.current = window.setTimeout(() => {
+      if (proposals.length > 0) {
+        setVoiceScope(/\b(change|update|replace|set)\b|\b(sửa|cập nhật|thay)\b/i.test(prompt) ? "transaction" : "empty");
+        setVoiceReview(proposals);
+        setMessages((current) => [
+          ...current,
+          {
+            id: messageIdRef.current++,
+            role: "assistant",
+            text: `I found ${proposals.length} proposed ${proposals.length === 1 ? "change" : "changes"}. Review the high-impact fields, then choose where to apply them.`,
+          },
+        ]);
+        setThinking(false);
+        return;
+      }
       setMessages((current) => [
         ...current,
         {
@@ -3744,6 +4152,10 @@ function AssistantPanel({
     setThinking(false);
     setRecording(false);
     setVoiceStatus(defaultVoiceStatus);
+    setVoiceScope("empty");
+    setVoiceReview([]);
+    setEditingProposalId(null);
+    setEditDraft("");
     setText("");
     setMessages([assistantWelcome(documentLabel, page)]);
     setHistoryOpen(false);
@@ -3824,6 +4236,10 @@ function AssistantPanel({
   };
 
   const quickActions = [
+    [
+      "Try Voice Fill",
+      "Update buyer to David Nguyen, purchase price to 850 thousand, deposit 3%, and close escrow October 15.",
+    ],
     ["Continue", "Continue to the next field"],
     ["Next form", "Next form"],
     ["Check status", "Check status and missing fields"],
@@ -3831,6 +4247,72 @@ function AssistantPanel({
     ["What’s missing?", "What fields are missing?"],
     ["Explain", "Explain this form"],
   ];
+
+  const applicableVoiceProposals = voiceReview.filter((proposal) => {
+    if (!proposal.included) return false;
+    if (voiceScope === "empty") return !proposal.currentValue;
+    if (voiceScope === "document") {
+      return proposal.affectedDocuments.includes(documentLabel);
+    }
+    return true;
+  });
+  const unconfirmedCount = applicableVoiceProposals.filter(
+    (proposal) => proposal.risk !== "standard" && !proposal.confirmed,
+  ).length;
+  const affectedDocuments = [
+    ...new Set(
+      applicableVoiceProposals.flatMap((proposal) =>
+        voiceScope === "document"
+          ? proposal.affectedDocuments.filter((form) => form === documentLabel)
+          : proposal.affectedDocuments,
+      ),
+    ),
+  ];
+  const affectedFieldCount = applicableVoiceProposals.reduce(
+    (sum, proposal) => sum + proposal.affectedFields,
+    0,
+  );
+
+  const updateVoiceProposal = (
+    id: string,
+    update: (proposal: VoiceProposal) => VoiceProposal,
+  ) => {
+    setVoiceReview((current) =>
+      current.map((proposal) => (proposal.id === id ? update(proposal) : proposal)),
+    );
+  };
+
+  const beginProposalEdit = (proposal: VoiceProposal) => {
+    setEditingProposalId(proposal.id);
+    setEditDraft(proposal.value);
+  };
+
+  const saveProposalEdit = (proposal: VoiceProposal) => {
+    if (!editDraft.trim()) return;
+    updateVoiceProposal(proposal.id, (current) =>
+      editVoiceProposal(current, editDraft),
+    );
+    setEditingProposalId(null);
+    setEditDraft("");
+  };
+
+  const applyVoiceReview = () => {
+    if (applicableVoiceProposals.length === 0 || unconfirmedCount > 0) return;
+    onApplyVoice(voiceScope, applicableVoiceProposals);
+    setMessages((current) => [
+      ...current,
+      {
+        id: messageIdRef.current++,
+        role: "assistant",
+        text:
+          voiceScope === "document"
+            ? `Applied ${applicableVoiceProposals.length} ${applicableVoiceProposals.length === 1 ? "value" : "values"} to ${documentLabel} only.`
+            : `Applied ${applicableVoiceProposals.length} reviewed ${applicableVoiceProposals.length === 1 ? "value" : "values"} to the transaction.`,
+      },
+    ]);
+    setVoiceReview([]);
+    setEditingProposalId(null);
+  };
 
   return (
     <div className="oq-assistant">
@@ -3882,6 +4364,220 @@ function AssistantPanel({
             <i />
             <i />
           </div>
+        )}
+        {voiceReview.length > 0 && (
+          <section
+            className="oq-voice-review"
+            aria-label="Voice fill review"
+            ref={voiceReviewRef}
+          >
+            <header className="oq-voice-review-head">
+              <span>
+                <small>VOICE FILL</small>
+                <b>{voiceReview.length} proposed changes</b>
+              </span>
+              <button
+                type="button"
+                aria-label="Dismiss voice fill review"
+                onClick={() => setVoiceReview([])}
+              >
+                <Icon name="close" size={15} />
+              </button>
+            </header>
+
+            <label className="oq-voice-scope">
+              <span>
+                <b>Apply to</b>
+                <small>{voiceScopeCopy[voiceScope].description}</small>
+              </span>
+              <select
+                aria-label="Voice fill apply scope"
+                value={voiceScope}
+                onChange={(event) =>
+                  setVoiceScope(event.target.value as VoiceFillScope)
+                }
+              >
+                {Object.entries(voiceScopeCopy).map(([value, copy]) => (
+                  <option key={value} value={value}>
+                    {copy.label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="oq-voice-impact" aria-label="Proposed change impact">
+              <span>
+                <b>{applicableVoiceProposals.length}</b>
+                <small>selected</small>
+              </span>
+              <span>
+                <b>{affectedDocuments.length}</b>
+                <small>documents</small>
+              </span>
+              <span>
+                <b>{affectedFieldCount}</b>
+                <small>mapped fields</small>
+              </span>
+            </div>
+
+            <div className="oq-voice-proposals">
+              {voiceReview.map((proposal) => {
+                const risk = voiceRiskCopy[proposal.risk];
+                const keptByScope =
+                  (voiceScope === "empty" && Boolean(proposal.currentValue)) ||
+                  (voiceScope === "document" &&
+                    !proposal.affectedDocuments.includes(documentLabel));
+                const editing = editingProposalId === proposal.id;
+                return (
+                  <article
+                    className={`${proposal.included ? "" : "excluded"} ${keptByScope ? "kept-by-scope" : ""}`}
+                    key={proposal.id}
+                  >
+                    <header>
+                      <span>
+                        <small>{proposal.section}</small>
+                        <b>{proposal.label}</b>
+                      </span>
+                      <span
+                        className={`oq-voice-risk ${risk.className}`}
+                        title={proposal.riskReason}
+                      >
+                        {risk.label}
+                      </span>
+                    </header>
+
+                    <div className="oq-voice-comparison">
+                      <span>
+                        <small>Current value</small>
+                        <b>{displayVoiceValue(proposal, proposal.currentValue)}</b>
+                        <em>Transaction</em>
+                      </span>
+                      <Icon name="chevron" size={14} />
+                      <span>
+                        <small>{proposal.editedByUser ? "Edited value" : "Suggested value"}</small>
+                        {editing ? (
+                          <input
+                            autoFocus
+                            aria-label={`Edit ${proposal.label}`}
+                            value={editDraft}
+                            onChange={(event) => setEditDraft(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === "Enter") {
+                                event.preventDefault();
+                                saveProposalEdit(proposal);
+                              }
+                              if (event.key === "Escape") {
+                                setEditingProposalId(null);
+                              }
+                            }}
+                          />
+                        ) : (
+                          <b>{displayVoiceValue(proposal, proposal.value)}</b>
+                        )}
+                        <em>
+                          {proposal.editedByUser
+                            ? "Edited manually"
+                            : `Voice · ${proposal.confidence}% confidence`}
+                        </em>
+                      </span>
+                    </div>
+
+                    <p className="oq-voice-field-meta">
+                      <span>{proposal.riskReason}</span>
+                      <span>
+                        {proposal.affectedDocuments.length > 0
+                          ? `${proposal.affectedFields} mapped fields · ${proposal.affectedDocuments.join(", ")}`
+                          : "No linked fields"}
+                      </span>
+                    </p>
+
+                    {keptByScope && (
+                      <p className="oq-voice-scope-note">
+                        {voiceScope === "empty"
+                          ? "Skipped · Empty fields only keeps the current value."
+                          : `Skipped · No mapped field in ${documentLabel}.`}
+                      </p>
+                    )}
+
+                    <footer>
+                      {editing ? (
+                        <>
+                          <button type="button" onClick={() => setEditingProposalId(null)}>
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            className="primary"
+                            disabled={!editDraft.trim()}
+                            onClick={() => saveProposalEdit(proposal)}
+                          >
+                            Save value
+                          </button>
+                        </>
+                      ) : (
+                        <>
+                          <button type="button" onClick={() => beginProposalEdit(proposal)}>
+                            <Icon name="edit" size={13} />
+                            Edit value
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              updateVoiceProposal(proposal.id, (current) => ({
+                                ...current,
+                                included: !current.included,
+                              }))
+                            }
+                          >
+                            {proposal.included ? "Use current" : "Use suggestion"}
+                          </button>
+                          {proposal.risk !== "standard" && proposal.included && (
+                            <button
+                              type="button"
+                              className={proposal.confirmed ? "confirmed" : "primary"}
+                              onClick={() =>
+                                updateVoiceProposal(proposal.id, (current) => ({
+                                  ...current,
+                                  confirmed: !current.confirmed,
+                                }))
+                              }
+                            >
+                              <Icon name="check" size={13} />
+                              {proposal.confirmed ? "Confirmed" : "Confirm change"}
+                            </button>
+                          )}
+                        </>
+                      )}
+                    </footer>
+                  </article>
+                );
+              })}
+            </div>
+
+            <footer className="oq-voice-review-actions">
+              <span>
+                <b>
+                  {unconfirmedCount > 0
+                    ? `Confirm ${unconfirmedCount} ${unconfirmedCount === 1 ? "field" : "fields"} before applying`
+                    : applicableVoiceProposals.length > 0
+                      ? "Ready to apply"
+                      : "Nothing will change in this scope"}
+                </b>
+                <small>Review or edit suggestions before they are applied.</small>
+              </span>
+              <button
+                type="button"
+                disabled={
+                  applicableVoiceProposals.length === 0 || unconfirmedCount > 0
+                }
+                onClick={applyVoiceReview}
+              >
+                {voiceScope === "document"
+                  ? `Apply to ${documentLabel}`
+                  : `Apply ${applicableVoiceProposals.length} ${applicableVoiceProposals.length === 1 ? "change" : "changes"}`}
+              </button>
+            </footer>
+          </section>
         )}
         <div className="oq-form-context">
           <Icon name="file" />
@@ -5673,6 +6369,74 @@ export default function Page() {
     });
   };
 
+  const applyVoiceUpdates = (
+    scope: VoiceFillScope,
+    proposals: VoiceProposal[],
+  ) => {
+    const updates = proposals.flatMap((proposal) => proposal.updates);
+    const detailUpdates = updates.filter((update) => update.target === "detail");
+    const detailPatch = Object.fromEntries(
+      detailUpdates.map((update) => [update.key, update.value]),
+    );
+    const nextValues = { ...detailValues, ...detailPatch };
+    const detailKeys = new Set(detailUpdates.map((update) => update.key));
+    const affectedLinks = detailPdfLinks.filter((link) =>
+      link.detailKeys.some((key) => detailKeys.has(key)),
+    );
+    const scopedLinks =
+      scope === "document"
+        ? affectedLinks.filter((link) => link.form === pdf.label)
+        : affectedLinks;
+
+    if (scope !== "document") {
+      setDetailValues(nextValues);
+      const partyUpdates = updates.filter(
+        (update) => update.target === "party" && update.partyId,
+      );
+      if (partyUpdates.length > 0) {
+        setParties((current) =>
+          current.map((party) => {
+            const patch = Object.fromEntries(
+              partyUpdates
+                .filter((update) => update.partyId === party.id)
+                .map((update) => [update.key, update.value]),
+            );
+            return Object.keys(patch).length > 0
+              ? { ...party, values: { ...party.values, ...patch } }
+              : party;
+          }),
+        );
+      }
+    }
+
+    setPdfFieldValues((current) => {
+      const next = { ...current };
+      scopedLinks
+        .filter((link) => link.kind !== "checkbox")
+        .forEach((link) => {
+          next[linkedPdfId(link)] = String(link.resolve(nextValues));
+        });
+      return next;
+    });
+    setCheckedFields((current) => {
+      const next = new Set(current);
+      scopedLinks
+        .filter((link) => link.kind === "checkbox")
+        .forEach((link) => {
+          const id = linkedPdfId(link);
+          if (Boolean(link.resolve(nextValues))) next.add(id);
+          else next.delete(id);
+        });
+      return [...next];
+    });
+
+    setNotice(
+      scope === "document"
+        ? `Voice Fill updated ${scopedLinks.length} mapped fields in ${pdf.label}.`
+        : `Voice Fill saved ${proposals.length} reviewed ${proposals.length === 1 ? "value" : "values"} to the transaction${affectedLinks.length > 0 ? ` and updated ${affectedLinks.length} mapped fields` : ""}.`,
+    );
+  };
+
   const updateSignaturePickerField = (
     documentCode: PdfDocumentCode,
     field: PdfFieldDefinition,
@@ -5911,7 +6675,7 @@ export default function Page() {
   };
   return (
     <main
-      className={`form-editor oq-editor oq-zoom-${zoom.toLowerCase().replace(" ", "-")} ${panelOpen ? "" : "oq-panel-collapsed"} `}
+      className={`form-editor oq-editor oq-zoom-${zoom.toLowerCase().replace(" ", "-")} ${panelOpen ? "" : "oq-panel-collapsed"} ${activePdfField ? "oq-field-editing" : ""}`}
     >
       <header className="fe-heading">
         <EditorNavigationFlyout />
@@ -6031,7 +6795,7 @@ export default function Page() {
               : [];
             return (
               <div
-                className="oq-pdf-stage"
+                className={`oq-pdf-stage ${isActivePage ? "is-active" : ""}`}
                 key={stageKey}
                 data-page={stageKey}
                 ref={(node) => {
@@ -6066,6 +6830,10 @@ export default function Page() {
                       fieldId: field.id,
                     });
                     const linked = isLinkedPdfField(documentCode, field.id);
+                    const isEditing =
+                      activePdfField?.stageKey === stageKey &&
+                      activePdfField.documentCode === documentCode &&
+                      activePdfField.field.id === field.id;
                     if (signingDate) {
                       // Filled in by whichever e-sign provider the transaction
                       // runs through, so it stays empty and non-editable here.
@@ -6088,7 +6856,7 @@ export default function Page() {
                       <button
                         key={id}
                         id={domId}
-                        className={`oq-pdf-field ${field.kind === "checkbox" ? "is-checkbox" : ""} ${field.kind === "signature" ? "is-signature" : ""} ${linked ? "is-linked" : ""} ${checked ? "checked" : ""} ${value ? "has-value" : ""} ${linkedHighlightId === domId ? "is-linked-target" : ""}`}
+                        className={`oq-pdf-field ${field.kind === "checkbox" ? "is-checkbox" : ""} ${field.kind === "signature" ? "is-signature" : ""} ${linked ? "is-linked" : ""} ${checked ? "checked" : ""} ${value ? "has-value" : ""} ${isEditing ? "is-editing" : ""} ${linkedHighlightId === domId ? "is-linked-target" : ""}`}
                         style={{
                           left: `${field.left}%`,
                           top: `${field.top}%`,
@@ -6224,6 +6992,9 @@ export default function Page() {
                 documentLabel={pdf.label}
                 documentTitle={pdf.title}
                 page={pdf.page}
+                transactionValues={detailValues}
+                parties={parties}
+                onApplyVoice={applyVoiceUpdates}
               />
             ) : panel === "parties" ? (
               <PartiesPanel
