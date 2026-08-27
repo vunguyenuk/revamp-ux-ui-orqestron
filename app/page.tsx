@@ -2528,9 +2528,31 @@ function PdfFieldPopover({
   const suggestions = suggestionsForPdfField(field);
   const { siblings } = siblingLinksForPdfField(documentCode, field.id);
   const siblingForms = [...new Set(siblings.map((link) => link.form))];
-  const linkedForms = [
-    ...new Set([documentCode, ...siblings.map((link) => link.form)]),
-  ];
+  const applyTargets = [
+    { form: documentCode, page: field.page },
+    ...siblings.map((link) => ({ form: link.form, page: link.page })),
+  ].reduce<Array<{ form: PdfDocumentCode; pages: number[]; fieldCount: number }>>(
+    (groups, target) => {
+      const existingGroup = groups.find((group) => group.form === target.form);
+
+      if (existingGroup) {
+        if (!existingGroup.pages.includes(target.page)) {
+          existingGroup.pages.push(target.page);
+          existingGroup.pages.sort((first, second) => first - second);
+        }
+        existingGroup.fieldCount += 1;
+        return groups;
+      }
+
+      groups.push({
+        form: target.form,
+        pages: [target.page],
+        fieldCount: 1,
+      });
+      return groups;
+    },
+    [],
+  );
   const anchoredStyle: React.CSSProperties = {
     top: `${field.top + field.height}%`,
     transform:
@@ -2643,14 +2665,30 @@ function PdfFieldPopover({
             className="oq-apply-choice"
             onClick={() => onSave(normalizedDraft, "everywhere")}
           >
-            <span>
+            <span className="oq-apply-choice-copy">
               <b>Apply to all matching forms</b>
               <small>
-                Update {siblings.length + 1} matching{" "}
+                Updates {siblings.length + 1} matching{" "}
                 {siblings.length === 0 ? "field" : "fields"} across{" "}
-                {linkedForms.length} {linkedForms.length === 1 ? "form" : "forms"}:{" "}
-                {linkedForms.join(", ")}
+                {applyTargets.length} {applyTargets.length === 1 ? "form" : "forms"}
               </small>
+              <span
+                className="oq-apply-targets"
+                aria-label="Forms and pages that will be updated"
+              >
+                {applyTargets.map((target) => (
+                  <span className="oq-apply-target" key={target.form}>
+                    <strong>{target.form}</strong>
+                    <span>
+                      {target.pages.length === 1 ? "Page" : "Pages"}{" "}
+                      {target.pages.join(", ")}
+                    </span>
+                    <em>
+                      {target.fieldCount} {target.fieldCount === 1 ? "field" : "fields"}
+                    </em>
+                  </span>
+                ))}
+              </span>
             </span>
             <Icon name="chevron" size={16} />
           </button>
@@ -3625,7 +3663,13 @@ type AssistantMessage = {
 };
 
 type VoiceFillScope = "empty" | "transaction" | "document";
-type VoiceRisk = "standard" | "review" | "critical";
+type VoiceSensitivityLevel = "routine" | "sensitive" | "critical";
+type VoiceSensitivityCategory =
+  | "General"
+  | "Legal identity"
+  | "Financial term"
+  | "Contract deadline"
+  | "Financing term";
 
 type VoiceFieldUpdate = {
   target: "detail" | "party";
@@ -3636,14 +3680,10 @@ type VoiceFieldUpdate = {
 
 type VoiceProposal = {
   id: string;
-  section: string;
   label: string;
   currentValue: string;
   value: string;
   updates: VoiceFieldUpdate[];
-  risk: VoiceRisk;
-  riskReason: string;
-  confidence: number;
   affectedDocuments: string[];
   affectedFields: number;
   confirmed: boolean;
@@ -3651,31 +3691,78 @@ type VoiceProposal = {
   editedByUser: boolean;
 };
 
-const voiceScopeCopy: Record<
-  VoiceFillScope,
-  { label: string; description: string }
-> = {
-  empty: {
-    label: "Empty fields only",
-    description: "Adds missing data without replacing existing values.",
-  },
-  transaction: {
-    label: "Transaction + forms",
-    description: "Updates transaction data and every linked form.",
-  },
-  document: {
-    label: "This document only",
-    description: "Updates mapped fields in the open document only.",
-  },
+type VoiceFieldPolicy = {
+  level: Exclude<VoiceSensitivityLevel, "routine">;
+  category: Exclude<VoiceSensitivityCategory, "General">;
+  keys: readonly string[];
+  confirmation: string;
 };
 
-const voiceRiskCopy: Record<
-  VoiceRisk,
-  { label: string; className: string }
-> = {
-  standard: { label: "Ready", className: "standard" },
-  review: { label: "Review", className: "review" },
-  critical: { label: "High impact", className: "critical" },
+type VoiceSensitivity = {
+  level: VoiceSensitivityLevel;
+  category: VoiceSensitivityCategory;
+  requiresConfirmation: boolean;
+  confirmation: string;
+};
+
+const voiceFieldPolicies: readonly VoiceFieldPolicy[] = [
+  {
+    level: "sensitive",
+    category: "Legal identity",
+    keys: ["firstName", "lastName", "buyer1FirstName", "buyer1LastName"],
+    confirmation: "Verify the legal name before applying.",
+  },
+  {
+    level: "critical",
+    category: "Financial term",
+    keys: ["purchasePrice", "deposit1"],
+    confirmation: "Confirm the amount before applying.",
+  },
+  {
+    level: "critical",
+    category: "Contract deadline",
+    keys: ["closeOfEscrow"],
+    confirmation: "Confirm the date before applying.",
+  },
+  {
+    level: "sensitive",
+    category: "Financing term",
+    keys: ["financingTerms"],
+    confirmation: "Review the loan wording before applying.",
+  },
+];
+
+const classifyVoiceUpdates = (
+  updates: VoiceFieldUpdate[],
+): VoiceSensitivity => {
+  const matches = updates.flatMap((update) =>
+    voiceFieldPolicies.filter((policy) => policy.keys.includes(update.key)),
+  );
+  const policy = matches.sort(
+    (a, b) => Number(b.level === "critical") - Number(a.level === "critical"),
+  )[0];
+  return policy
+    ? {
+        level: policy.level,
+        category: policy.category,
+        requiresConfirmation: true,
+        confirmation: policy.confirmation,
+      }
+    : {
+        level: "routine",
+        category: "General",
+        requiresConfirmation: false,
+        confirmation: "",
+      };
+};
+
+const classifyVoiceProposal = (proposal: Pick<VoiceProposal, "updates">) =>
+  classifyVoiceUpdates(proposal.updates);
+
+type VoiceApplyResult = {
+  count: number;
+  scope: VoiceFillScope;
+  undone: boolean;
 };
 
 const cleanSpokenNumber = (raw: string, suffix = "") => {
@@ -3786,7 +3873,7 @@ function extractVoiceProposals(
     if (proposal.value && proposal.value !== proposal.currentValue) {
       proposals.push({
         ...proposal,
-        confirmed: proposal.risk === "standard",
+        confirmed: !classifyVoiceUpdates(proposal.updates).requiresConfirmation,
         included: true,
         editedByUser: false,
       });
@@ -3805,7 +3892,6 @@ function extractVoiceProposals(
       .join(" ");
     add({
       id: "seller-name",
-      section: "Parties",
       label: "Seller",
       currentValue: current,
       value: name,
@@ -3813,9 +3899,6 @@ function extractVoiceProposals(
         { target: "party", partyId: seller.id, key: "firstName", value: split.firstName },
         { target: "party", partyId: seller.id, key: "lastName", value: split.lastName },
       ],
-      risk: "review",
-      riskReason: "Legal identity · Review spelling",
-      confidence: 92,
       affectedDocuments: [],
       affectedFields: 0,
     });
@@ -3830,7 +3913,6 @@ function extractVoiceProposals(
     const affected = voiceAffected(["buyer1FirstName", "buyer1LastName"]);
     add({
       id: "buyer-name",
-      section: "Parties",
       label: "Primary buyer",
       currentValue: [values.buyer1FirstName, values.buyer1LastName]
         .filter(Boolean)
@@ -3840,9 +3922,6 @@ function extractVoiceProposals(
         { target: "detail", key: "buyer1FirstName", value: split.firstName },
         { target: "detail", key: "buyer1LastName", value: split.lastName },
       ],
-      risk: "review",
-      riskReason: "Legal identity · Review spelling",
-      confidence: 94,
       ...affected,
     });
   }
@@ -3857,16 +3936,12 @@ function extractVoiceProposals(
     const affected = voiceAffected(["purchasePrice"]);
     add({
       id: "purchase-price",
-      section: "Offer",
       label: "Purchase price",
       currentValue: values.purchasePrice,
       value: proposedPrice,
       updates: [
         { target: "detail", key: "purchasePrice", value: proposedPrice },
       ],
-      risk: "critical",
-      riskReason: "Financial term · Confirmation required",
-      confidence: 97,
       ...affected,
     });
   }
@@ -3892,16 +3967,12 @@ function extractVoiceProposals(
     const affected = voiceAffected(["deposit1"]);
     add({
       id: "initial-deposit",
-      section: "Offer",
       label: "Initial deposit",
       currentValue: values.deposit1,
       value: depositDisplay,
       updates: [
         { target: "detail", key: "deposit1", value: proposedDeposit },
       ],
-      risk: "critical",
-      riskReason: "Financial term · Confirmation required",
-      confidence: depositPercent ? 91 : 96,
       ...affected,
     });
   }
@@ -3918,18 +3989,12 @@ function extractVoiceProposals(
       const affected = voiceAffected(["closeOfEscrow"]);
       add({
         id: "close-of-escrow",
-        section: "Dates",
         label: "Close of escrow",
         currentValue: values.closeOfEscrow,
         value: proposedClose,
         updates: [
           { target: "detail", key: "closeOfEscrow", value: proposedClose },
         ],
-        risk: "critical",
-        riskReason: days
-          ? `Deadline · ${days[1]} days from accepted date`
-          : "Deadline · Confirmation required",
-        confidence: days ? 86 : 95,
         ...affected,
       });
     }
@@ -3940,14 +4005,10 @@ function extractVoiceProposals(
     const affected = voiceAffected(["financingTerms"]);
     add({
       id: "financing-terms",
-      section: "Financing",
       label: "Loan type",
       currentValue: values.financingTerms,
       value,
       updates: [{ target: "detail", key: "financingTerms", value }],
-      risk: "review",
-      riskReason: "Financing term · Review wording",
-      confidence: 88,
       ...affected,
     });
   }
@@ -3983,7 +4044,6 @@ const editVoiceProposal = (proposal: VoiceProposal, rawValue: string) => {
     editedByUser: true,
     confirmed: true,
     included: true,
-    confidence: 100,
   };
 };
 
@@ -4041,6 +4101,8 @@ function AssistantPanel({
   transactionValues,
   parties,
   onApplyVoice,
+  onUndoVoice,
+  onShowAffectedField,
 }: {
   documentLabel: string;
   documentTitle: string;
@@ -4051,6 +4113,8 @@ function AssistantPanel({
     scope: VoiceFillScope,
     proposals: VoiceProposal[],
   ) => void;
+  onUndoVoice: () => void;
+  onShowAffectedField: (target: DetailPdfLink) => void;
 }) {
   const [text, setText] = useState("");
   const [recording, setRecording] = useState(false);
@@ -4059,6 +4123,11 @@ function AssistantPanel({
   const [voiceStatus, setVoiceStatus] = useState(defaultVoiceStatus);
   const [voiceScope, setVoiceScope] = useState<VoiceFillScope>("empty");
   const [voiceReview, setVoiceReview] = useState<VoiceProposal[]>([]);
+  const [activeVoiceProposalId, setActiveVoiceProposalId] = useState<string | null>(
+    null,
+  );
+  const [voiceApplyResult, setVoiceApplyResult] =
+    useState<VoiceApplyResult | null>(null);
   const [editingProposalId, setEditingProposalId] = useState<string | null>(null);
   const [editDraft, setEditDraft] = useState("");
   const [messages, setMessages] = useState<AssistantMessage[]>([
@@ -4086,16 +4155,23 @@ function AssistantPanel({
       const thread = threadRef.current;
       const review = voiceReviewRef.current;
       if (!thread || !review) return;
+      const precedingMessage = review.previousElementSibling;
+      const scrollTarget = activeVoiceProposalId
+        ? review
+        : precedingMessage instanceof HTMLElement &&
+            precedingMessage.classList.contains("oq-ai-message")
+          ? precedingMessage
+          : review;
       thread.scrollTo({
         top:
           thread.scrollTop +
-          review.getBoundingClientRect().top -
+          scrollTarget.getBoundingClientRect().top -
           thread.getBoundingClientRect().top,
         behavior: "smooth",
       });
     });
     return () => window.cancelAnimationFrame(frame);
-  }, [voiceReview.length]);
+  }, [activeVoiceProposalId, voiceReview.length]);
 
   useEffect(
     () => () => {
@@ -4119,16 +4195,20 @@ function AssistantPanel({
     setThinking(true);
     replyTimerRef.current = window.setTimeout(() => {
       if (proposals.length > 0) {
-        setVoiceScope(/\b(change|update|replace|set)\b|\b(sửa|cập nhật|thay)\b/i.test(prompt) ? "transaction" : "empty");
+        const nextVoiceScope: VoiceFillScope =
+          /\b(this|current|open)\s+(document|form)\b|\b(form|tài liệu)\s+này\b/i.test(
+            prompt,
+          )
+            ? "document"
+            : /\b(change|update|replace|set)\b|\b(sửa|cập nhật|thay)\b/i.test(
+                  prompt,
+                )
+              ? "transaction"
+              : "empty";
+        setVoiceScope(nextVoiceScope);
         setVoiceReview(proposals);
-        setMessages((current) => [
-          ...current,
-          {
-            id: messageIdRef.current++,
-            role: "assistant",
-            text: `I found ${proposals.length} proposed ${proposals.length === 1 ? "change" : "changes"}. Review the high-impact fields, then choose where to apply them.`,
-          },
-        ]);
+        setActiveVoiceProposalId(null);
+        setVoiceApplyResult(null);
         setThinking(false);
         return;
       }
@@ -4154,6 +4234,8 @@ function AssistantPanel({
     setVoiceStatus(defaultVoiceStatus);
     setVoiceScope("empty");
     setVoiceReview([]);
+    setActiveVoiceProposalId(null);
+    setVoiceApplyResult(null);
     setEditingProposalId(null);
     setEditDraft("");
     setText("");
@@ -4248,37 +4330,65 @@ function AssistantPanel({
     ["Explain", "Explain this form"],
   ];
 
-  const applicableVoiceProposals = voiceReview.filter((proposal) => {
-    if (!proposal.included) return false;
+  const voiceReviewDocuments = [
+    ...new Set(voiceReview.flatMap((proposal) => proposal.affectedDocuments)),
+  ];
+  const proposalIsInVoiceScope = (proposal: VoiceProposal) => {
     if (voiceScope === "empty") return !proposal.currentValue;
     if (voiceScope === "document") {
       return proposal.affectedDocuments.includes(documentLabel);
     }
     return true;
-  });
-  const unconfirmedCount = applicableVoiceProposals.filter(
-    (proposal) => proposal.risk !== "standard" && !proposal.confirmed,
-  ).length;
-  const affectedDocuments = [
-    ...new Set(
-      applicableVoiceProposals.flatMap((proposal) =>
-        voiceScope === "document"
-          ? proposal.affectedDocuments.filter((form) => form === documentLabel)
-          : proposal.affectedDocuments,
-      ),
-    ),
-  ];
-  const affectedFieldCount = applicableVoiceProposals.reduce(
-    (sum, proposal) => sum + proposal.affectedFields,
-    0,
+  };
+  const scopedVoiceProposals = voiceReview.filter(proposalIsInVoiceScope);
+  const applicableVoiceProposals = scopedVoiceProposals.filter(
+    (proposal) => proposal.included,
   );
+  const pendingVoiceProposals = applicableVoiceProposals.filter(
+    (proposal) =>
+      classifyVoiceProposal(proposal).requiresConfirmation &&
+      !proposal.confirmed,
+  );
+  const unconfirmedCount = pendingVoiceProposals.length;
+  const activeVoiceProposal = scopedVoiceProposals.find(
+    (proposal) => proposal.id === activeVoiceProposalId,
+  );
+  const activeVoiceProposalIndex = activeVoiceProposal
+    ? scopedVoiceProposals.findIndex(
+        (proposal) => proposal.id === activeVoiceProposal.id,
+      )
+    : -1;
+  const activeVoiceSensitivity = activeVoiceProposal
+    ? classifyVoiceProposal(activeVoiceProposal)
+    : null;
+  const activeDetailKeys = new Set(
+    activeVoiceProposal?.updates
+      .filter((update) => update.target === "detail")
+      .map((update) => update.key) ?? [],
+  );
+  const activeAffectedTarget = activeVoiceProposal
+    ? detailPdfLinks.find(
+        (link) =>
+          link.form === documentLabel &&
+          link.detailKeys.some((key) => activeDetailKeys.has(key)),
+      )
+    : undefined;
 
-  const updateVoiceProposal = (
-    id: string,
-    update: (proposal: VoiceProposal) => VoiceProposal,
+  const nextPendingVoiceProposal = (
+    review: VoiceProposal[],
+    currentId: string,
   ) => {
-    setVoiceReview((current) =>
-      current.map((proposal) => (proposal.id === id ? update(proposal) : proposal)),
+    const queue = review.filter(proposalIsInVoiceScope);
+    const currentIndex = queue.findIndex((proposal) => proposal.id === currentId);
+    const ordered = [
+      ...queue.slice(currentIndex + 1),
+      ...queue.slice(0, Math.max(0, currentIndex)),
+    ];
+    return ordered.find(
+      (proposal) =>
+        proposal.included &&
+        classifyVoiceProposal(proposal).requiresConfirmation &&
+        !proposal.confirmed,
     );
   };
 
@@ -4289,30 +4399,78 @@ function AssistantPanel({
 
   const saveProposalEdit = (proposal: VoiceProposal) => {
     if (!editDraft.trim()) return;
-    updateVoiceProposal(proposal.id, (current) =>
-      editVoiceProposal(current, editDraft),
+    const nextReview = voiceReview.map((current) =>
+      current.id === proposal.id
+        ? editVoiceProposal(current, editDraft)
+        : current,
     );
+    setVoiceReview(nextReview);
     setEditingProposalId(null);
     setEditDraft("");
+    setActiveVoiceProposalId(
+      nextPendingVoiceProposal(nextReview, proposal.id)?.id ?? null,
+    );
+  };
+
+  const resolveVoiceProposal = (
+    proposal: VoiceProposal,
+    useSuggestion: boolean,
+  ) => {
+    const nextReview = voiceReview.map((current) =>
+      current.id === proposal.id
+        ? {
+            ...current,
+            included: useSuggestion,
+            confirmed: true,
+          }
+        : current,
+    );
+    setVoiceReview(nextReview);
+    setEditingProposalId(null);
+    setEditDraft("");
+    setActiveVoiceProposalId(
+      nextPendingVoiceProposal(nextReview, proposal.id)?.id ?? null,
+    );
+  };
+
+  const startVoiceReview = () => {
+    const next = pendingVoiceProposals[0] ?? scopedVoiceProposals[0];
+    setActiveVoiceProposalId(next?.id ?? null);
   };
 
   const applyVoiceReview = () => {
     if (applicableVoiceProposals.length === 0 || unconfirmedCount > 0) return;
     onApplyVoice(voiceScope, applicableVoiceProposals);
-    setMessages((current) => [
-      ...current,
-      {
-        id: messageIdRef.current++,
-        role: "assistant",
-        text:
-          voiceScope === "document"
-            ? `Applied ${applicableVoiceProposals.length} ${applicableVoiceProposals.length === 1 ? "value" : "values"} to ${documentLabel} only.`
-            : `Applied ${applicableVoiceProposals.length} reviewed ${applicableVoiceProposals.length === 1 ? "value" : "values"} to the transaction.`,
-      },
-    ]);
+    setVoiceApplyResult({
+      count: applicableVoiceProposals.length,
+      scope: voiceScope,
+      undone: false,
+    });
     setVoiceReview([]);
+    setActiveVoiceProposalId(null);
     setEditingProposalId(null);
   };
+
+  const undoVoiceReview = () => {
+    onUndoVoice();
+    setVoiceApplyResult((current) =>
+      current ? { ...current, undone: true } : current,
+    );
+  };
+
+  const assistantAnnouncement = thinking
+    ? "Assistant is responding"
+    : activeVoiceProposal
+      ? `Reviewing ${activeVoiceProposal.label}, ${activeVoiceProposalIndex + 1} of ${scopedVoiceProposals.length}`
+      : voiceReview.length > 0
+        ? `${scopedVoiceProposals.length} proposed changes. ${unconfirmedCount} need review.`
+        : voiceApplyResult
+          ? voiceApplyResult.undone
+            ? "The last Voice Fill update was undone."
+            : `${voiceApplyResult.count} changes applied.`
+          : messages.at(-1)?.role === "assistant"
+            ? messages.at(-1)?.text
+            : "";
 
   return (
     <div className="oq-assistant">
@@ -4349,7 +4507,10 @@ function AssistantPanel({
           </button>
         </div>
       )}
-      <div className="oq-thread" ref={threadRef} aria-live="polite">
+      <div className="oq-thread" ref={threadRef}>
+        <div className="sr-only" aria-live="polite" aria-atomic="true">
+          {assistantAnnouncement}
+        </div>
         {messages.map((message) => (
           <div
             className={message.role === "user" ? "oq-user-message" : "oq-ai-message"}
@@ -4367,226 +4528,295 @@ function AssistantPanel({
         )}
         {voiceReview.length > 0 && (
           <section
-            className="oq-voice-review"
+            className="oq-ai-message oq-voice-review"
             aria-label="Voice fill review"
             ref={voiceReviewRef}
           >
-            <header className="oq-voice-review-head">
-              <span>
-                <small>VOICE FILL</small>
-                <b>{voiceReview.length} proposed changes</b>
-              </span>
-              <button
-                type="button"
-                aria-label="Dismiss voice fill review"
-                onClick={() => setVoiceReview([])}
-              >
-                <Icon name="close" size={15} />
-              </button>
-            </header>
-
-            <label className="oq-voice-scope">
-              <span>
-                <b>Apply to</b>
-                <small>{voiceScopeCopy[voiceScope].description}</small>
-              </span>
-              <select
-                aria-label="Voice fill apply scope"
-                value={voiceScope}
-                onChange={(event) =>
-                  setVoiceScope(event.target.value as VoiceFillScope)
-                }
-              >
-                {Object.entries(voiceScopeCopy).map(([value, copy]) => (
-                  <option key={value} value={value}>
-                    {copy.label}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <div className="oq-voice-impact" aria-label="Proposed change impact">
-              <span>
-                <b>{applicableVoiceProposals.length}</b>
-                <small>selected</small>
-              </span>
-              <span>
-                <b>{affectedDocuments.length}</b>
-                <small>documents</small>
-              </span>
-              <span>
-                <b>{affectedFieldCount}</b>
-                <small>mapped fields</small>
-              </span>
-            </div>
-
-            <div className="oq-voice-proposals">
-              {voiceReview.map((proposal) => {
-                const risk = voiceRiskCopy[proposal.risk];
-                const keptByScope =
-                  (voiceScope === "empty" && Boolean(proposal.currentValue)) ||
-                  (voiceScope === "document" &&
-                    !proposal.affectedDocuments.includes(documentLabel));
-                const editing = editingProposalId === proposal.id;
-                return (
-                  <article
-                    className={`${proposal.included ? "" : "excluded"} ${keptByScope ? "kept-by-scope" : ""}`}
-                    key={proposal.id}
+            {activeVoiceProposal ? (
+              <div className="oq-voice-review-detail">
+                <header>
+                  <span>
+                    <small>
+                      {activeVoiceProposalIndex + 1} of {scopedVoiceProposals.length}
+                    </small>
+                    <b>{activeVoiceProposal.label}</b>
+                  </span>
+                  <button
+                    type="button"
+                    aria-label="Back to change list"
+                    title="Back to change list"
+                    onClick={() => {
+                      setActiveVoiceProposalId(null);
+                      setEditingProposalId(null);
+                      setEditDraft("");
+                    }}
                   >
-                    <header>
-                      <span>
-                        <small>{proposal.section}</small>
-                        <b>{proposal.label}</b>
-                      </span>
-                      <span
-                        className={`oq-voice-risk ${risk.className}`}
-                        title={proposal.riskReason}
-                      >
-                        {risk.label}
-                      </span>
-                    </header>
+                    <Icon name="close" size={15} />
+                  </button>
+                </header>
 
-                    <div className="oq-voice-comparison">
-                      <span>
-                        <small>Current value</small>
-                        <b>{displayVoiceValue(proposal, proposal.currentValue)}</b>
-                        <em>Transaction</em>
-                      </span>
-                      <Icon name="chevron" size={14} />
-                      <span>
-                        <small>{proposal.editedByUser ? "Edited value" : "Suggested value"}</small>
-                        {editing ? (
-                          <input
-                            autoFocus
-                            aria-label={`Edit ${proposal.label}`}
-                            value={editDraft}
-                            onChange={(event) => setEditDraft(event.target.value)}
-                            onKeyDown={(event) => {
-                              if (event.key === "Enter") {
-                                event.preventDefault();
-                                saveProposalEdit(proposal);
-                              }
-                              if (event.key === "Escape") {
-                                setEditingProposalId(null);
-                              }
-                            }}
-                          />
-                        ) : (
-                          <b>{displayVoiceValue(proposal, proposal.value)}</b>
-                        )}
-                        <em>
-                          {proposal.editedByUser
-                            ? "Edited manually"
-                            : `Voice · ${proposal.confidence}% confidence`}
-                        </em>
-                      </span>
-                    </div>
-
-                    <p className="oq-voice-field-meta">
-                      <span>{proposal.riskReason}</span>
-                      <span>
-                        {proposal.affectedDocuments.length > 0
-                          ? `${proposal.affectedFields} mapped fields · ${proposal.affectedDocuments.join(", ")}`
-                          : "No linked fields"}
-                      </span>
-                    </p>
-
-                    {keptByScope && (
-                      <p className="oq-voice-scope-note">
-                        {voiceScope === "empty"
-                          ? "Skipped · Empty fields only keeps the current value."
-                          : `Skipped · No mapped field in ${documentLabel}.`}
-                      </p>
-                    )}
-
-                    <footer>
-                      {editing ? (
-                        <>
-                          <button type="button" onClick={() => setEditingProposalId(null)}>
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            className="primary"
-                            disabled={!editDraft.trim()}
-                            onClick={() => saveProposalEdit(proposal)}
-                          >
-                            Save value
-                          </button>
-                        </>
-                      ) : (
-                        <>
-                          <button type="button" onClick={() => beginProposalEdit(proposal)}>
-                            <Icon name="edit" size={13} />
-                            Edit value
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              updateVoiceProposal(proposal.id, (current) => ({
-                                ...current,
-                                included: !current.included,
-                              }))
-                            }
-                          >
-                            {proposal.included ? "Use current" : "Use suggestion"}
-                          </button>
-                          {proposal.risk !== "standard" && proposal.included && (
-                            <button
-                              type="button"
-                              className={proposal.confirmed ? "confirmed" : "primary"}
-                              onClick={() =>
-                                updateVoiceProposal(proposal.id, (current) => ({
-                                  ...current,
-                                  confirmed: !current.confirmed,
-                                }))
-                              }
-                            >
-                              <Icon name="check" size={13} />
-                              {proposal.confirmed ? "Confirmed" : "Confirm change"}
-                            </button>
-                          )}
-                        </>
+                <div className="oq-voice-detail-values">
+                  <span>
+                    <small>Current</small>
+                    <b>
+                      {displayVoiceValue(
+                        activeVoiceProposal,
+                        activeVoiceProposal.currentValue,
                       )}
-                    </footer>
-                  </article>
-                );
-              })}
-            </div>
+                    </b>
+                  </span>
+                  <Icon name="chevron" size={15} />
+                  <span>
+                    <small>Suggestion</small>
+                    {editingProposalId === activeVoiceProposal.id ? (
+                      <span className="oq-voice-inline-edit">
+                        <input
+                          autoFocus
+                          aria-label={`Edit ${activeVoiceProposal.label}`}
+                          value={editDraft}
+                          onChange={(event) => setEditDraft(event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key === "Enter") {
+                              event.preventDefault();
+                              saveProposalEdit(activeVoiceProposal);
+                            }
+                            if (event.key === "Escape") {
+                              setEditingProposalId(null);
+                              setEditDraft("");
+                            }
+                          }}
+                        />
+                        <button
+                          type="button"
+                          className="cancel"
+                          aria-label={`Cancel editing ${activeVoiceProposal.label}`}
+                          title="Cancel editing"
+                          onClick={() => {
+                            setEditingProposalId(null);
+                            setEditDraft("");
+                          }}
+                        >
+                          <Icon name="close" size={14} />
+                        </button>
+                        <button
+                          type="button"
+                          disabled={!editDraft.trim()}
+                          aria-label={`Save ${activeVoiceProposal.label}`}
+                          title="Save value"
+                          onClick={() => saveProposalEdit(activeVoiceProposal)}
+                        >
+                          <Icon name="check" size={15} />
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        className="oq-voice-edit-trigger"
+                        aria-label={`Edit ${activeVoiceProposal.label}: ${displayVoiceValue(activeVoiceProposal, activeVoiceProposal.value)}`}
+                        onClick={() => beginProposalEdit(activeVoiceProposal)}
+                      >
+                        <b>
+                          {displayVoiceValue(
+                            activeVoiceProposal,
+                            activeVoiceProposal.value,
+                          )}
+                        </b>
+                        <Icon name="edit" size={13} />
+                      </button>
+                    )}
+                  </span>
+                </div>
 
-            <footer className="oq-voice-review-actions">
-              <span>
-                <b>
-                  {unconfirmedCount > 0
-                    ? `Confirm ${unconfirmedCount} ${unconfirmedCount === 1 ? "field" : "fields"} before applying`
-                    : applicableVoiceProposals.length > 0
-                      ? "Ready to apply"
-                      : "Nothing will change in this scope"}
-                </b>
-                <small>Review or edit suggestions before they are applied.</small>
-              </span>
-              <button
-                type="button"
-                disabled={
-                  applicableVoiceProposals.length === 0 || unconfirmedCount > 0
-                }
-                onClick={applyVoiceReview}
-              >
-                {voiceScope === "document"
-                  ? `Apply to ${documentLabel}`
-                  : `Apply ${applicableVoiceProposals.length} ${applicableVoiceProposals.length === 1 ? "change" : "changes"}`}
-              </button>
-            </footer>
+                {activeVoiceSensitivity?.requiresConfirmation && (
+                  <p
+                    className={`oq-voice-risk-note ${activeVoiceSensitivity.level}`}
+                    role="note"
+                  >
+                    <b>
+                      {activeVoiceSensitivity.level === "critical"
+                        ? "High risk"
+                        : "Sensitive"}
+                    </b>
+                    <span>
+                      {activeVoiceSensitivity.category} · {activeVoiceSensitivity.confirmation}
+                    </span>
+                  </p>
+                )}
+
+                {activeAffectedTarget && (
+                  <button
+                    type="button"
+                    className="oq-voice-show-affected"
+                    onClick={() => onShowAffectedField(activeAffectedTarget)}
+                  >
+                    Show in {documentLabel}
+                    <Icon name="chevron" size={12} />
+                  </button>
+                )}
+
+                {editingProposalId !== activeVoiceProposal.id && (
+                  <footer className="oq-voice-decision-actions">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        resolveVoiceProposal(activeVoiceProposal, false)
+                      }
+                    >
+                      {activeVoiceProposal.currentValue
+                        ? "Keep current"
+                        : "Leave empty"}
+                    </button>
+                    <button
+                      type="button"
+                      className="primary"
+                      onClick={() =>
+                        resolveVoiceProposal(activeVoiceProposal, true)
+                      }
+                    >
+                      Use suggestion
+                    </button>
+                  </footer>
+                )}
+              </div>
+            ) : (
+              <>
+                <header className="oq-voice-queue-head">
+                  <b>
+                    {scopedVoiceProposals.length} proposed{" "}
+                    {scopedVoiceProposals.length === 1 ? "change" : "changes"}
+                  </b>
+                  <span
+                    className={`oq-voice-queue-summary ${
+                      unconfirmedCount > 0
+                        ? "review"
+                        : applicableVoiceProposals.length > 0
+                          ? "ready"
+                          : "idle"
+                    }`}
+                  >
+                    {unconfirmedCount > 0
+                      ? `${unconfirmedCount} need review`
+                      : applicableVoiceProposals.length > 0
+                        ? "Review complete"
+                        : "Nothing to apply"}
+                  </span>
+                </header>
+                <p className="oq-voice-queue-scope">
+                  {voiceScope === "document"
+                    ? `${documentLabel} only`
+                    : voiceScope === "empty"
+                      ? "Empty fields only"
+                      : voiceReviewDocuments.length > 0
+                        ? `Affects ${voiceReviewDocuments.length} ${voiceReviewDocuments.length === 1 ? "form" : "forms"}`
+                        : "Transaction record only"}
+                </p>
+
+                <ul className="oq-voice-proposals">
+                  {voiceReview.map((proposal) => {
+                    const inScope = proposalIsInVoiceScope(proposal);
+                    const sensitivity = classifyVoiceProposal(proposal);
+                    const status = !inScope
+                      ? "Skipped"
+                      : !proposal.included
+                        ? "Kept"
+                        : proposal.confirmed
+                          ? "Ready"
+                          : sensitivity.level === "critical"
+                            ? "High risk"
+                            : sensitivity.level === "sensitive"
+                              ? "Sensitive"
+                              : "Review";
+                    return (
+                      <li key={proposal.id}>
+                        <button
+                          type="button"
+                          disabled={!inScope}
+                          aria-expanded={false}
+                          onClick={() => setActiveVoiceProposalId(proposal.id)}
+                        >
+                          <span className="oq-voice-queue-label">
+                            {proposal.label}
+                          </span>
+                          <span className="oq-voice-queue-values">
+                            <span>
+                              {displayVoiceValue(proposal, proposal.currentValue)}
+                            </span>
+                            <Icon name="chevron" size={12} />
+                            <b>{displayVoiceValue(proposal, proposal.value)}</b>
+                          </span>
+                          <span
+                            className={`oq-voice-queue-status ${status.toLowerCase().replace(/\s+/g, "-")}`}
+                          >
+                            {status}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+
+                <footer className="oq-voice-review-actions">
+                  <span>
+                    <b>
+                      {unconfirmedCount > 0
+                        ? "Review required"
+                        : `${applicableVoiceProposals.length} ${applicableVoiceProposals.length === 1 ? "change" : "changes"} ready`}
+                    </b>
+                    <small>
+                      {voiceReview.length - scopedVoiceProposals.length > 0
+                        ? `${voiceReview.length - scopedVoiceProposals.length} skipped by scope`
+                        : unconfirmedCount > 0
+                          ? "You’ll review one change at a time."
+                          : "Apply when you’re ready."}
+                    </small>
+                  </span>
+                  <button
+                    type="button"
+                    disabled={
+                      unconfirmedCount === 0 &&
+                      applicableVoiceProposals.length === 0
+                    }
+                    onClick={
+                      unconfirmedCount > 0 ? startVoiceReview : applyVoiceReview
+                    }
+                  >
+                    {unconfirmedCount > 0
+                      ? `Review ${unconfirmedCount}`
+                      : voiceScope === "document"
+                        ? `Apply to ${documentLabel}`
+                        : `Apply ${applicableVoiceProposals.length}`}
+                  </button>
+                </footer>
+              </>
+            )}
           </section>
         )}
-        <div className="oq-form-context">
-          <Icon name="file" />
-          <span>
-            <b>{documentLabel} — {documentTitle}</b>
-            <small>Current form context · page {page}</small>
-          </span>
-          <button onClick={() => send("Continue to the next field")}>Continue filling</button>
-        </div>
+        {voiceApplyResult && (
+          <div className="oq-ai-message oq-voice-applied" role="status">
+            <span className="oq-voice-applied-icon" aria-hidden="true">
+              <Icon name={voiceApplyResult.undone ? "history" : "check"} size={15} />
+            </span>
+            <span>
+              <b>
+                {voiceApplyResult.undone
+                  ? "Changes undone"
+                  : `${voiceApplyResult.count} ${voiceApplyResult.count === 1 ? "change" : "changes"} applied`}
+              </b>
+              <small>
+                {voiceApplyResult.undone
+                  ? "Previous values restored."
+                  : voiceApplyResult.scope === "document"
+                    ? `Updated ${documentLabel} only.`
+                    : "Transaction and linked forms updated."}
+              </small>
+            </span>
+            {!voiceApplyResult.undone && (
+              <button type="button" onClick={undoVoiceReview}>
+                Undo
+              </button>
+            )}
+          </div>
+        )}
       </div>
       <div className="oq-assistant-footer">
         <div className="oq-chat-actions" aria-label="Quick actions">
@@ -6214,6 +6444,12 @@ export default function Page() {
   const [pdfFieldValues, setPdfFieldValues] = useState<Record<string, string>>(
     () => linkedTextValues(initialDetailValues),
   );
+  const [voiceUndoSnapshot, setVoiceUndoSnapshot] = useState<{
+    detailValues: typeof initialDetailValues;
+    parties: TransactionParty[];
+    checkedFields: string[];
+    pdfFieldValues: Record<string, string>;
+  } | null>(null);
   const [signatureRequiredFieldIds] = useState<SignatureRequiredFieldIds>(() =>
     buildSignatureDemoRequiredFields(
       linkedTextValues(initialDetailValues),
@@ -6373,6 +6609,15 @@ export default function Page() {
     scope: VoiceFillScope,
     proposals: VoiceProposal[],
   ) => {
+    setVoiceUndoSnapshot({
+      detailValues: { ...detailValues },
+      parties: parties.map((party) => ({
+        ...party,
+        values: { ...party.values },
+      })),
+      checkedFields: [...checkedFields],
+      pdfFieldValues: { ...pdfFieldValues },
+    });
     const updates = proposals.flatMap((proposal) => proposal.updates);
     const detailUpdates = updates.filter((update) => update.target === "detail");
     const detailPatch = Object.fromEntries(
@@ -6435,6 +6680,16 @@ export default function Page() {
         ? `Voice Fill updated ${scopedLinks.length} mapped fields in ${pdf.label}.`
         : `Voice Fill saved ${proposals.length} reviewed ${proposals.length === 1 ? "value" : "values"} to the transaction${affectedLinks.length > 0 ? ` and updated ${affectedLinks.length} mapped fields` : ""}.`,
     );
+  };
+
+  const undoVoiceUpdates = () => {
+    if (!voiceUndoSnapshot) return;
+    setDetailValues(voiceUndoSnapshot.detailValues);
+    setParties(voiceUndoSnapshot.parties);
+    setCheckedFields(voiceUndoSnapshot.checkedFields);
+    setPdfFieldValues(voiceUndoSnapshot.pdfFieldValues);
+    setVoiceUndoSnapshot(null);
+    setNotice("Voice Fill changes were undone. Previous values restored.");
   };
 
   const updateSignaturePickerField = (
@@ -6785,6 +7040,7 @@ export default function Page() {
                 : null;
             const stageKey = pageKey(item);
             const isActivePage = pageIndex === activePacketPageIndex;
+            const hasOpenFieldEditor = activePdfField?.stageKey === stageKey;
             const shouldMountPage =
               Math.abs(pageIndex - activePacketPageIndex) <=
               PDF_PAGE_MOUNT_RADIUS;
@@ -6795,7 +7051,7 @@ export default function Page() {
               : [];
             return (
               <div
-                className={`oq-pdf-stage ${isActivePage ? "is-active" : ""}`}
+                className={`oq-pdf-stage ${isActivePage ? "is-active" : ""} ${hasOpenFieldEditor ? "has-open-field-editor" : ""}`}
                 key={stageKey}
                 data-page={stageKey}
                 ref={(node) => {
@@ -6988,13 +7244,15 @@ export default function Page() {
               />
             ) : panel === "assistant" ? (
               <AssistantPanel
-                key={`${pdf.label}-${pdf.page}`}
+                key={pdf.label}
                 documentLabel={pdf.label}
                 documentTitle={pdf.title}
                 page={pdf.page}
                 transactionValues={detailValues}
                 parties={parties}
                 onApplyVoice={applyVoiceUpdates}
+                onUndoVoice={undoVoiceUpdates}
+                onShowAffectedField={goToLinkedField}
               />
             ) : panel === "parties" ? (
               <PartiesPanel

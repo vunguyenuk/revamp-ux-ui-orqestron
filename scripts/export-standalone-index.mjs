@@ -531,7 +531,7 @@ if (context && modeButtons.length >= 2) {
   const assistantBody = document.createElement('div');
   assistantBody.className = 'oq-assistant';
   assistantBody.style.display = 'none';
-  assistantBody.innerHTML = '<div class="oq-assistant-context"><span class="oq-assistant-mark">✦</span><span><b>Initial real estate inquiry</b><small>AD — Disclosure Regarding Real Estate Agency Relationship (Buyer)</small></span><button aria-label="New chat" title="New chat">＋</button><button aria-label="Chat history" title="Chat history" aria-expanded="false">↶</button></div><div class="oq-chat-history" hidden><b>Recent chats</b><button><span>Review AD fields</span><small>Current conversation</small></button><button><span>Start a clean conversation</span><small>New chat</small></button></div><div class="oq-thread" aria-live="polite"><div class="oq-ai-message">I’m ready to help with AD, page 1. Ask about a clause, check missing fields, or use voice to dictate transaction information.</div><div class="oq-form-context"><span>▧</span><span><b>AD — Disclosure Regarding Real Estate Agency Relationship (Buyer)</b><small>Current form context · page 1</small></span><button>Continue filling</button></div></div><div class="oq-assistant-footer"><div class="oq-chat-actions" aria-label="Quick actions"><button data-prompt="Continue to the next field">Continue</button><button data-prompt="Next form">Next form</button><button data-prompt="Check status and missing fields">Check status</button><button data-prompt="Summarize this page">Summarize</button><button data-prompt="What fields are missing?">What’s missing?</button><button data-prompt="Explain this form">Explain</button></div><div class="oq-voice-status" role="status" hidden><span></span><b>Listening…</b><button>Stop</button></div><div class="oq-compose"><textarea placeholder="Ask about a clause or field…"></textarea><button aria-label="Turn on voice mode" title="Speak naturally to fill form fields">●</button><button aria-label="Send message" disabled>➤</button></div><small>AI may make mistakes. Review before applying.</small></div>';
+  assistantBody.innerHTML = '<div class="oq-assistant-context"><span class="oq-assistant-mark">✦</span><span><b>Initial real estate inquiry</b><small>AD — Disclosure Regarding Real Estate Agency Relationship (Buyer)</small></span><button aria-label="New chat" title="New chat">＋</button><button aria-label="Chat history" title="Chat history" aria-expanded="false">↶</button></div><div class="oq-chat-history" hidden><b>Recent chats</b><button><span>Review AD fields</span><small>Current conversation</small></button><button><span>Start a clean conversation</span><small>New chat</small></button></div><div class="oq-thread" aria-live="polite"><div class="oq-ai-message">I’m ready to help with AD, page 1. Ask about a clause, check missing fields, or use voice to dictate transaction information.</div></div><div class="oq-assistant-footer"><div class="oq-chat-actions" aria-label="Quick actions"><button data-prompt="Continue to the next field">Continue</button><button data-prompt="Next form">Next form</button><button data-prompt="Check status and missing fields">Check status</button><button data-prompt="Summarize this page">Summarize</button><button data-prompt="What fields are missing?">What’s missing?</button><button data-prompt="Explain this form">Explain</button></div><div class="oq-voice-status" role="status" hidden><span></span><b>Listening…</b><button>Stop</button></div><div class="oq-compose"><textarea placeholder="Ask about a clause or field…"></textarea><button aria-label="Turn on voice mode" title="Speak naturally to fill form fields">●</button><button aria-label="Send message" disabled>➤</button></div><small>AI may make mistakes. Review before applying.</small></div>';
   context.appendChild(assistantBody);
   const assistantThread = assistantBody.querySelector('.oq-thread');
   const assistantInput = assistantBody.querySelector('.oq-compose textarea');
@@ -556,7 +556,7 @@ if (context && modeButtons.length >= 2) {
     const message = document.createElement('div');
     message.className = role === 'user' ? 'oq-user-message' : 'oq-ai-message';
     message.textContent = value;
-    assistantThread.insertBefore(message, assistantThread.querySelector('.oq-form-context'));
+    assistantThread.appendChild(message);
     assistantThread.scrollTop = assistantThread.scrollHeight;
   };
   const sendAssistantMessage = (value) => {
@@ -570,7 +570,7 @@ if (context && modeButtons.length >= 2) {
     thinking.className = 'oq-ai-message oq-thinking';
     thinking.setAttribute('aria-label', 'Assistant is responding');
     thinking.innerHTML = '<i></i><i></i><i></i>';
-    assistantThread.insertBefore(thinking, assistantThread.querySelector('.oq-form-context'));
+    assistantThread.appendChild(thinking);
     assistantReplyTimer = window.setTimeout(() => {
       thinking.remove();
       appendAssistantMessage('assistant', assistantReply(prompt));
@@ -598,7 +598,6 @@ if (context && modeButtons.length >= 2) {
   });
   assistantSend.addEventListener('click', () => sendAssistantMessage());
   assistantBody.querySelectorAll('.oq-chat-actions button').forEach((button) => button.addEventListener('click', () => sendAssistantMessage(button.dataset.prompt)));
-  assistantBody.querySelector('.oq-form-context button').addEventListener('click', () => sendAssistantMessage('Continue to the next field'));
   assistantBody.querySelector('[aria-label="New chat"]').addEventListener('click', resetAssistant);
   assistantHistoryButton.addEventListener('click', () => {
     assistantHistory.hidden = !assistantHistory.hidden;
