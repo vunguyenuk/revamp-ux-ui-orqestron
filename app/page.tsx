@@ -3710,25 +3710,30 @@ const voiceFieldPolicies: readonly VoiceFieldPolicy[] = [
     level: "sensitive",
     category: "Legal identity",
     keys: ["firstName", "lastName", "buyer1FirstName", "buyer1LastName"],
-    confirmation: "Verify the legal name before applying.",
+    confirmation: "Verify the legal name",
   },
   {
     level: "critical",
     category: "Financial term",
-    keys: ["purchasePrice", "deposit1"],
-    confirmation: "Confirm the amount before applying.",
+    keys: [
+      "purchasePrice",
+      "deposit1",
+      "purchaseCommissionPercent",
+      "purchaseCommissionAmount",
+    ],
+    confirmation: "Confirm the amount",
   },
   {
     level: "critical",
     category: "Contract deadline",
     keys: ["closeOfEscrow"],
-    confirmation: "Confirm the date before applying.",
+    confirmation: "Confirm the date",
   },
   {
     level: "sensitive",
     category: "Financing term",
     keys: ["financingTerms"],
-    confirmation: "Review the loan wording before applying.",
+    confirmation: "Review the loan wording",
   },
 ];
 
@@ -4000,6 +4005,67 @@ function extractVoiceProposals(
     }
   }
 
+  const addressMatch = transcript.match(
+    /(?:property\s+address|địa\s+chỉ)\s*(?:(?:is|to|là)\s+|:\s*)?([\dA-Za-zÀ-ỹ'.\- ]+?)(?=\s*[,.]|\s+and\s+|$)/i,
+  );
+  if (addressMatch) {
+    const address = addressMatch[1].trim();
+    add({
+      id: "property-address",
+      label: "Property address",
+      currentValue: values.propertyAddress,
+      value: address,
+      updates: [{ target: "detail", key: "propertyAddress", value: address }],
+      ...voiceAffected(["propertyAddress"]),
+    });
+  }
+
+  const cityMatch = transcript.match(
+    /\bcity\s*(?:(?:is|to|là)\s+|:\s*)?([A-Za-zÀ-ỹ'\- ]+?)(?=\s*[,.]|\s+and\s+|$)/i,
+  );
+  if (cityMatch) {
+    const city = cityMatch[1].trim();
+    add({
+      id: "property-city",
+      label: "Property city",
+      currentValue: values.city,
+      value: city,
+      updates: [{ target: "detail", key: "city", value: city }],
+      ...voiceAffected(["city"]),
+    });
+  }
+
+  const commissionMatch = transcript.match(
+    /(?:broker\s+compensation|commission|hoa\s+hồng)[^\d]{0,16}(\d+(?:\.\d+)?)\s*(?:%|percent|phần\s+trăm)/i,
+  );
+  if (commissionMatch) {
+    const percent = commissionMatch[1];
+    const base = Number(
+      (proposedPrice || values.purchasePrice).replace(/,/g, ""),
+    );
+    const amount = Number.isFinite(base)
+      ? String(Math.round((base * Number(percent)) / 100))
+      : "";
+    add({
+      id: "purchase-commission",
+      label: "Purchase commission",
+      currentValue: `${values.purchaseCommissionPercent}% (${formatMoney(values.purchaseCommissionAmount)})`,
+      value: `${percent}% (${formatMoney(amount)})`,
+      updates: [
+        { target: "detail", key: "purchaseCommissionPercent", value: percent },
+        {
+          target: "detail",
+          key: "purchaseCommissionAmount",
+          value: Number(amount).toLocaleString("en-US"),
+        },
+      ],
+      ...voiceAffected([
+        "purchaseCommissionPercent",
+        "purchaseCommissionAmount",
+      ]),
+    });
+  }
+
   if (/conventional(?:\s+loan)?/i.test(transcript)) {
     const value = "80% conventional loan, 30-year fixed";
     const affected = voiceAffected(["financingTerms"]);
@@ -4123,6 +4189,10 @@ function AssistantPanel({
   const [voiceStatus, setVoiceStatus] = useState(defaultVoiceStatus);
   const [voiceScope, setVoiceScope] = useState<VoiceFillScope>("empty");
   const [voiceReview, setVoiceReview] = useState<VoiceProposal[]>([]);
+  const [voiceReviewSource, setVoiceReviewSource] = useState<"voice" | "chat">(
+    "chat",
+  );
+  const spokenInputRef = useRef(false);
   const [activeVoiceProposalId, setActiveVoiceProposalId] = useState<string | null>(
     null,
   );
@@ -4183,9 +4253,13 @@ function AssistantPanel({
     [],
   );
 
-  const send = (value = text) => {
+  const send = (
+    value = text,
+    source: "voice" | "chat" = spokenInputRef.current ? "voice" : "chat",
+  ) => {
     const prompt = value.trim();
     if (!prompt || thinking) return;
+    spokenInputRef.current = false;
     const proposals = extractVoiceProposals(prompt, transactionValues, parties);
     setMessages((current) => [
       ...current,
@@ -4206,6 +4280,7 @@ function AssistantPanel({
               ? "transaction"
               : "empty";
         setVoiceScope(nextVoiceScope);
+        setVoiceReviewSource(source);
         setVoiceReview(proposals);
         setActiveVoiceProposalId(null);
         setVoiceApplyResult(null);
@@ -4294,6 +4369,7 @@ function AssistantPanel({
         .map((result) => result[0].transcript)
         .join(" ")
         .trim();
+      spokenInputRef.current = true;
       setText(transcript);
       setVoiceStatus(transcript || "Listening…");
     };
@@ -4320,14 +4396,8 @@ function AssistantPanel({
   const quickActions = [
     [
       "Try Voice Fill",
-      "Update buyer to David Nguyen, purchase price to 850 thousand, deposit 3%, and close escrow October 15.",
+      "Update buyer to David Nguyen, property address to 1820 Hillcrest Drive, city Pasadena, and broker compensation to 2.5 percent.",
     ],
-    ["Continue", "Continue to the next field"],
-    ["Next form", "Next form"],
-    ["Check status", "Check status and missing fields"],
-    ["Summarize", "Summarize this page"],
-    ["What’s missing?", "What fields are missing?"],
-    ["Explain", "Explain this form"],
   ];
 
   const voiceReviewDocuments = [
@@ -4366,13 +4436,22 @@ function AssistantPanel({
       .filter((update) => update.target === "detail")
       .map((update) => update.key) ?? [],
   );
-  const activeAffectedTarget = activeVoiceProposal
-    ? detailPdfLinks.find(
-        (link) =>
-          link.form === documentLabel &&
-          link.detailKeys.some((key) => activeDetailKeys.has(key)),
+  const activeAffectedLinks = activeVoiceProposal
+    ? detailPdfLinks.filter((link) =>
+        link.detailKeys.some((key) => activeDetailKeys.has(key)),
       )
-    : undefined;
+    : [];
+  const activeAffectedForms = [
+    ...new Set(activeAffectedLinks.map((link) => link.form)),
+  ]
+    .sort((a, b) =>
+      a === documentLabel ? -1 : b === documentLabel ? 1 : a.localeCompare(b),
+    )
+    .map((form) => ({
+      form,
+      count: activeAffectedLinks.filter((link) => link.form === form).length,
+      target: activeAffectedLinks.find((link) => link.form === form)!,
+    }));
 
   const nextPendingVoiceProposal = (
     review: VoiceProposal[],
@@ -4556,18 +4635,24 @@ function AssistantPanel({
                 </header>
 
                 <div className="oq-voice-detail-values">
-                  <span>
-                    <small>Current</small>
-                    <b>
-                      {displayVoiceValue(
-                        activeVoiceProposal,
-                        activeVoiceProposal.currentValue,
-                      )}
-                    </b>
+                  <span className="oq-voice-detail-source">
+                    <Icon
+                      name={
+                        activeVoiceProposal.editedByUser
+                          ? "edit"
+                          : voiceReviewSource === "voice"
+                            ? "mic"
+                            : "send"
+                      }
+                      size={13}
+                    />
+                    {activeVoiceProposal.editedByUser
+                      ? "Edited by you"
+                      : voiceReviewSource === "voice"
+                        ? "Voice input"
+                        : "Typed in chat"}
                   </span>
-                  <Icon name="chevron" size={15} />
-                  <span>
-                    <small>Suggestion</small>
+                  <span className="oq-voice-detail-new">
                     {editingProposalId === activeVoiceProposal.id ? (
                       <span className="oq-voice-inline-edit">
                         <input
@@ -4621,38 +4706,62 @@ function AssistantPanel({
                             activeVoiceProposal.value,
                           )}
                         </b>
-                        <Icon name="edit" size={13} />
+                        <Icon name="edit" size={15} />
                       </button>
                     )}
                   </span>
                 </div>
 
-                {activeVoiceSensitivity?.requiresConfirmation && (
-                  <p
-                    className={`oq-voice-risk-note ${activeVoiceSensitivity.level}`}
-                    role="note"
-                  >
-                    <b>
-                      {activeVoiceSensitivity.level === "critical"
-                        ? "High risk"
-                        : "Sensitive"}
-                    </b>
-                    <span>
-                      {activeVoiceSensitivity.category} · {activeVoiceSensitivity.confirmation}
-                    </span>
-                  </p>
-                )}
+                <dl className="oq-voice-detail-facts">
+                  <div>
+                    <dt>On file</dt>
+                    <dd>
+                      {activeVoiceProposal.currentValue
+                        ? displayVoiceValue(
+                            activeVoiceProposal,
+                            activeVoiceProposal.currentValue,
+                          )
+                        : "Blank"}
+                    </dd>
+                  </div>
+                  {activeAffectedForms.length > 0 && (
+                    <div>
+                      <dt>Appears on</dt>
+                      <dd className="oq-voice-detail-forms">
+                        {activeAffectedForms.map(({ form, count, target }) => (
+                          <button
+                            key={form}
+                            type="button"
+                            className="oq-voice-show-affected"
+                            onClick={() => onShowAffectedField(target)}
+                          >
+                            {form}
+                            <i>
+                              {count} {count === 1 ? "field" : "fields"}
+                            </i>
+                            <Icon name="chevron" size={12} />
+                          </button>
+                        ))}
+                      </dd>
+                    </div>
+                  )}
+                  {activeVoiceSensitivity?.requiresConfirmation && (
+                    <div className={`risk ${activeVoiceSensitivity.level}`}>
+                      <dt>Compliance</dt>
+                      <dd>
+                        <b>
+                          {activeVoiceSensitivity.level === "critical"
+                            ? "High risk"
+                            : "Sensitive"}
+                        </b>
+                        {" · "}
+                        {activeVoiceSensitivity.category}
+                        <small>{activeVoiceSensitivity.confirmation}</small>
+                      </dd>
+                    </div>
+                  )}
+                </dl>
 
-                {activeAffectedTarget && (
-                  <button
-                    type="button"
-                    className="oq-voice-show-affected"
-                    onClick={() => onShowAffectedField(activeAffectedTarget)}
-                  >
-                    Show in {documentLabel}
-                    <Icon name="chevron" size={12} />
-                  </button>
-                )}
 
                 {editingProposalId !== activeVoiceProposal.id && (
                   <footer className="oq-voice-decision-actions">
@@ -4738,11 +4847,12 @@ function AssistantPanel({
                             {proposal.label}
                           </span>
                           <span className="oq-voice-queue-values">
-                            <span>
-                              {displayVoiceValue(proposal, proposal.currentValue)}
-                            </span>
-                            <Icon name="chevron" size={12} />
                             <b>{displayVoiceValue(proposal, proposal.value)}</b>
+                            <span>
+                              {proposal.currentValue
+                                ? `on file ${displayVoiceValue(proposal, proposal.currentValue)}`
+                                : "blank on file"}
+                            </span>
                           </span>
                           <span
                             className={`oq-voice-queue-status ${status.toLowerCase().replace(/\s+/g, "-")}`}
@@ -4821,7 +4931,10 @@ function AssistantPanel({
       <div className="oq-assistant-footer">
         <div className="oq-chat-actions" aria-label="Quick actions">
           {quickActions.map(([label, prompt]) => (
-            <button key={label} onClick={() => send(prompt)}>
+            <button
+              key={label}
+              onClick={() => send(prompt, label === "Try Voice Fill" ? "voice" : "chat")}
+            >
               {label}
             </button>
           ))}
@@ -4842,7 +4955,10 @@ function AssistantPanel({
         <div className="oq-compose">
           <textarea
             value={text}
-            onChange={(e) => setText(e.target.value)}
+            onChange={(e) => {
+              spokenInputRef.current = false;
+              setText(e.target.value);
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
