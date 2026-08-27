@@ -4139,6 +4139,8 @@ const assistantWelcome = (documentLabel: string, page: number): AssistantMessage
 });
 
 const defaultVoiceStatus = "Speak naturally to fill form fields";
+const voiceDemoLine =
+  "Update buyer to David Nguyen, property address to 1820 Hillcrest Drive, city Pasadena, and broker compensation to 2.5 percent.";
 
 function assistantResponse(prompt: string, documentLabel: string, page: number) {
   const query = prompt.toLowerCase();
@@ -4208,6 +4210,8 @@ function AssistantPanel({
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const voiceStartedAtRef = useRef(0);
   const replyTimerRef = useRef<number | null>(null);
+  const dictationRef = useRef<number | null>(null);
+  const silenceRef = useRef<number | null>(null);
   const messageIdRef = useRef(1);
   const threadRef = useRef<HTMLDivElement | null>(null);
   const voiceReviewRef = useRef<HTMLElement | null>(null);
@@ -4318,10 +4322,47 @@ function AssistantPanel({
     setHistoryOpen(false);
   };
 
+  const stopDictation = () => {
+    if (dictationRef.current) window.clearTimeout(dictationRef.current);
+    if (silenceRef.current) window.clearTimeout(silenceRef.current);
+    dictationRef.current = null;
+    silenceRef.current = null;
+  };
+
+  /** Demo dictation: types the line out like a live transcript, then sends it. */
+  const simulateSpeech = (status: string) => {
+    stopDictation();
+    const words = voiceDemoLine.split(" ");
+    setRecording(true);
+    setVoiceStatus(status);
+    setText("");
+    let index = 0;
+    const tick = () => {
+      index += 1;
+      setText(words.slice(0, index).join(" "));
+      if (index < words.length) {
+        dictationRef.current = window.setTimeout(tick, 78);
+        return;
+      }
+      dictationRef.current = window.setTimeout(() => {
+        setRecording(false);
+        setVoiceStatus(defaultVoiceStatus);
+        send(voiceDemoLine, "voice");
+      }, 520);
+    };
+    dictationRef.current = window.setTimeout(tick, 320);
+  };
+
   const toggleVoice = async () => {
     if (recording) {
+      const hadText = text.trim().length > 0;
+      stopDictation();
       recognitionRef.current?.stop();
       if (recorderRef.current?.state === "recording") recorderRef.current.stop();
+      if (!hadText) {
+        setRecording(false);
+        simulateSpeech("Nothing heard — playing the demo line");
+      }
       return;
     }
     const voiceWindow = window as typeof window & {
@@ -4332,7 +4373,7 @@ function AssistantPanel({
       voiceWindow.SpeechRecognition ?? voiceWindow.webkitSpeechRecognition;
     if (!Recognition) {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
-        setVoiceStatus("Voice input is not supported in this browser");
+        simulateSpeech("No speech-to-text here — playing the demo line");
         return;
       }
       try {
@@ -4356,7 +4397,7 @@ function AssistantPanel({
         setVoiceStatus("Recording voice note…");
       } catch {
         setRecording(false);
-        setVoiceStatus("Microphone access is required for voice input");
+        simulateSpeech("No microphone access — playing the demo line");
       }
       return;
     }
@@ -4369,36 +4410,43 @@ function AssistantPanel({
         .map((result) => result[0].transcript)
         .join(" ")
         .trim();
+      if (transcript && silenceRef.current) {
+        window.clearTimeout(silenceRef.current);
+        silenceRef.current = null;
+      }
       spokenInputRef.current = true;
       setText(transcript);
       setVoiceStatus(transcript || "Listening…");
     };
-    recognition.onerror = (event) => {
+    recognition.onerror = () => {
+      recognitionRef.current = null;
       setRecording(false);
-      setVoiceStatus(
-        event.error === "not-allowed"
-          ? "Microphone access is required for voice input"
-          : "Voice input stopped. Please try again.",
-      );
+      simulateSpeech("No microphone access — playing the demo line");
     };
     recognition.onend = () => {
-      setRecording(false);
-      setVoiceStatus((current) =>
-        current === "Listening…" ? defaultVoiceStatus : current,
-      );
+      recognitionRef.current = null;
+      if (text.trim() || spokenInputRef.current) {
+        setRecording(false);
+        setVoiceStatus((current) =>
+          current === "Listening…" ? defaultVoiceStatus : current,
+        );
+        return;
+      }
+      simulateSpeech("Nothing heard — playing the demo line");
     };
     recognitionRef.current = recognition;
     setRecording(true);
     setVoiceStatus("Listening…");
-    recognition.start();
+    try {
+      recognition.start();
+      silenceRef.current = window.setTimeout(() => {
+        if (!spokenInputRef.current) recognitionRef.current?.stop();
+      }, 2600);
+    } catch {
+      setRecording(false);
+      simulateSpeech("No microphone access — playing the demo line");
+    }
   };
-
-  const quickActions = [
-    [
-      "Try Voice Fill",
-      "Update buyer to David Nguyen, property address to 1820 Hillcrest Drive, city Pasadena, and broker compensation to 2.5 percent.",
-    ],
-  ];
 
   const voiceReviewDocuments = [
     ...new Set(voiceReview.flatMap((proposal) => proposal.affectedDocuments)),
@@ -4929,16 +4977,6 @@ function AssistantPanel({
         )}
       </div>
       <div className="oq-assistant-footer">
-        <div className="oq-chat-actions" aria-label="Quick actions">
-          {quickActions.map(([label, prompt]) => (
-            <button
-              key={label}
-              onClick={() => send(prompt, label === "Try Voice Fill" ? "voice" : "chat")}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
         {(recording || voiceStatus !== defaultVoiceStatus) && (
           <div className={`oq-voice-status ${recording ? "recording" : ""}`} role="status">
             <span />

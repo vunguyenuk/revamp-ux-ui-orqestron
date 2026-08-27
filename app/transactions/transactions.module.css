@@ -369,7 +369,14 @@
 .red { background: oklch(59% 0.14 24); }
 
 .columnBody {
+  display: flex;
   min-height: 0;
+  flex-direction: column;
+  gap: 12px;
+  padding: 3px 3px 6px;
+  margin: -3px -3px -6px;
+  overflow-y: auto;
+  scrollbar-width: thin;
 }
 
 .columnBody > p {
@@ -380,6 +387,7 @@
 
 .transactionCard {
   display: grid;
+  flex: 0 0 auto;
   height: 117px;
   padding: 12px;
   border: 1px solid var(--line);

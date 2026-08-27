@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import styles from "./transactions.module.css";
+import TransactionWorkspace from "./assistant";
 import { activeTransactionName } from "../transaction-data";
 
 export const metadata: Metadata = {
@@ -109,35 +110,6 @@ function NavItem({
   );
 }
 
-function TransactionCard() {
-  return (
-    <Link
-      className={styles.transactionCard}
-      href="/"
-      aria-label={`Open ${activeTransactionName} transaction`}
-    >
-      <div className={styles.transactionName}>{activeTransactionName}</div>
-      <div className={styles.location}>
-        <span aria-hidden="true">⌾</span> CA
-      </div>
-      <div className={styles.cardStatus}>
-        <span>Onboarding</span>
-        <i aria-label="Onboarding progress: one of five steps">
-          <b />
-          <b />
-          <b />
-          <b />
-          <b />
-        </i>
-      </div>
-      <div className={styles.cardFooter}>
-        <span>New Leads</span>
-        <strong>Open ↗</strong>
-      </div>
-    </Link>
-  );
-}
-
 export default function TransactionsPage() {
   return (
     <main className={styles.shell}>
@@ -187,42 +159,10 @@ export default function TransactionsPage() {
         </div>
       </aside>
 
-      <section className={styles.workspace}>
-        <header className={styles.topbar}>
-          <button className={styles.mobileBackButton} aria-label="Back">
-            <Icon name="back" size={20} />
-          </button>
-          <div className={styles.heading}>
-            <h1>Transactions</h1>
-            <p>Drag cards to the adjacent phase column</p>
-          </div>
-          <div className={styles.actions}>
-            <button className={styles.newTransaction}>
-              <Icon name="plus" size={17} /> New Transaction
-            </button>
-          </div>
-        </header>
-
-        <div className={styles.board}>
-          <div className={styles.columns}>
-            {phases.map((phase) => (
-              <section className={styles.column} key={phase.name}>
-                <header className={styles.columnHeader}>
-                  <div>
-                    <i className={styles[phase.color]} />
-                    <b>{phase.name}</b>
-                  </div>
-                  <span>{phase.count}</span>
-                </header>
-                <div className={styles.columnBody}>
-                  {phase.hasTransaction ? <TransactionCard /> : <p>No transaction</p>}
-                </div>
-                <button className={styles.addTransaction}>+ Add transaction</button>
-              </section>
-            ))}
-          </div>
-        </div>
-      </section>
+      <TransactionWorkspace
+        phases={phases}
+        activeTransactionName={activeTransactionName}
+      />
     </main>
   );
 }
